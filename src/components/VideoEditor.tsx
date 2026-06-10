@@ -22,6 +22,14 @@ export interface VideoEditorProps {
   cameraModes?: string[];
   defaultCameraMode?: string;
   musicList?: MusicTrack[];
+  /** Maximum number of media items user can select. Default: 1, Max allowed: 5 */
+  maxSelection?: number;
+  /**
+   * Enforce a fixed aspect ratio for image/video preview.
+   * '1:1' = Square, '4:3' = Standard, '4:5' = Instagram Portrait,
+   * '16:9' = Landscape, '9:16' = Portrait, 'free' = No restriction (default)
+   */
+  aspectRatio?: '1:1' | '4:3' | '4:5' | '16:9' | '9:16' | 'free';
 }
 
 export default function VideoEditor({
@@ -33,7 +41,10 @@ export default function VideoEditor({
   cameraModes,
   defaultCameraMode,
   musicList,
+  maxSelection = 1,
+  aspectRatio = 'free',
 }: VideoEditorProps) {
+  const clampedMax = Math.min(5, Math.max(1, maxSelection));
   const isDarkMode = useColorScheme() === 'dark';
   const [screen, setScreen] = useState<'pick' | 'editor' | 'crop' | 'export'>('pick');
   const [items, setItems] = useState<MediaItem[]>([]);
@@ -74,6 +85,8 @@ export default function VideoEditor({
             onCancelPress={onCancelPress || onClose}
             cameraModes={cameraModes}
             defaultCameraMode={defaultCameraMode}
+            maxSelection={clampedMax}
+            aspectRatio={aspectRatio}
             onCameraModeChange={(mode) => {
               setSelectedCameraMode(mode);
             }}
@@ -143,6 +156,7 @@ export default function VideoEditor({
         {screen === 'crop' && current && (
           <CropScreen
             item={current}
+            aspectRatio={aspectRatio}
             onBack={() => setScreen('editor')}
             onSave={(uri, thumbnailUri, durationMs) => {
               const updated = {

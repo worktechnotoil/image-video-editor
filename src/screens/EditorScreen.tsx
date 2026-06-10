@@ -25,6 +25,7 @@ import type { ImageEditOptions, MediaItem, MusicTrack } from '../types';
 
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
+const SCREEN_HEIGHT = Dimensions.get('window').height;
 const TIMELINE_WIDTH = SCREEN_WIDTH - 40;
 const HANDLE_SIZE = 24;
 const CARD_WIDTH = SCREEN_WIDTH * 0.76;
@@ -472,6 +473,8 @@ export function EditorScreen({
   const [newText, setNewText] = useState('');
   const isNewOverlay = React.useRef(false); // track if overlay was just created (not yet saved)
   const originalOverlayBackup = React.useRef<{ id: string; text: string; x: number; y: number; color: string; fontSize: number } | null>(null);
+  const [activeDraggingId, setActiveDraggingId] = useState<string | null>(null);
+  const [isOverTrash, setIsOverTrash] = useState(false);
 
   // ── Stickers ────────────────────────────────────────────────────────────────
   const STICKER_LIST = [
@@ -826,10 +829,19 @@ export function EditorScreen({
   const createTextPan = (id: string) => {
     let startX = 0;
     let startY = 0;
+    let pressStartTime = 0;
+    let hasMoved = false;
+    let longPressTimeout: any = null;
+
     return PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: () => {
+        pressStartTime = Date.now();
+        hasMoved = false;
+        setActiveDraggingId(id);
+        setIsOverTrash(false);
+        
         setOverlays(prev => {
           const item = prev.find(o => o.id === id);
           if (item) {
@@ -838,13 +850,80 @@ export function EditorScreen({
           }
           return prev;
         });
+
+        // Setup long press timer (600ms)
+        if (longPressTimeout) clearTimeout(longPressTimeout);
+        longPressTimeout = setTimeout(() => {
+          if (!hasMoved) {
+            removeTextOverlay(id);
+          }
+        }, 600);
       },
       onPanResponderMove: (_, gesture) => {
+        if (Math.abs(gesture.dx) > 4 || Math.abs(gesture.dy) > 4) {
+          hasMoved = true;
+          if (longPressTimeout) {
+            clearTimeout(longPressTimeout);
+            longPressTimeout = null;
+          }
+        }
+        
+        const newX = startX + gesture.dx;
+        const newY = startY + gesture.dy;
+
+        // Trash zone: bottom 140px of screen, center horizontal
+        const isNearTrash = gesture.moveY > SCREEN_HEIGHT - 140 && Math.abs(gesture.moveX - (SCREEN_WIDTH / 2)) < 90;
+        setIsOverTrash(isNearTrash);
+
         setOverlays(prev => prev.map(o => o.id === id ? {
           ...o,
-          x: startX + gesture.dx,
-          y: startY + gesture.dy
+          x: newX,
+          y: newY
         } : o));
+      },
+      onPanResponderRelease: (_, gesture) => {
+        if (longPressTimeout) {
+          clearTimeout(longPressTimeout);
+          longPressTimeout = null;
+        }
+
+        // Check if released over trash zone using final touch screen coordinates
+        const releasedOverTrash = gesture.moveY > SCREEN_HEIGHT - 140 && Math.abs(gesture.moveX - (SCREEN_WIDTH / 2)) < 90;
+
+        // Reset dragging states
+        setActiveDraggingId(null);
+        setIsOverTrash(false);
+
+        if (releasedOverTrash) {
+          setTimeout(() => {
+            removeTextOverlay(id);
+          }, 50);
+          return;
+        }
+
+        const pressDuration = Date.now() - pressStartTime;
+        if (!hasMoved && pressDuration < 250) {
+          pushToHistory();
+          setOverlays(prev => {
+            const found = prev.find(o => o.id === id);
+            if (found) {
+              originalOverlayBackup.current = { ...found };
+              isNewOverlay.current = false;
+              setEditingTextId(id);
+              setNewText(found.text);
+              setPanel('text');
+            }
+            return prev;
+          });
+        }
+      },
+      onPanResponderTerminate: () => {
+        if (longPressTimeout) {
+          clearTimeout(longPressTimeout);
+          longPressTimeout = null;
+        }
+        setActiveDraggingId(null);
+        setIsOverTrash(false);
       }
     });
   };
@@ -1708,24 +1787,11 @@ export function EditorScreen({
                 ]}
                 {...responder.panHandlers}
               >
-                <Pressable
-                  onLongPress={() => removeTextOverlay(overlay.id)}
-                  onPress={() => {
-                    pushToHistory();
-                    // Backup original state (text, color, position, size, etc.)
-                    const found = overlays.find(o => o.id === overlay.id);
-                    if (found) {
-                      originalOverlayBackup.current = { ...found };
-                    }
-                    isNewOverlay.current = false;
-                    setEditingTextId(overlay.id);
-                    setNewText(overlay.text);
-                  }}
-                >
+                <View style={{ padding: 4 }}>
                   <Text style={[styles.textOverlay, { color: overlay.color, fontSize: overlay.fontSize }]}>
                     {overlay.text}
                   </Text>
-                </Pressable>
+                </View>
               </View>
             );
           })}
@@ -1964,23 +2030,11 @@ export function EditorScreen({
                       ]}
                       {...responder.panHandlers}
                     >
-                      <Pressable
-                        onLongPress={() => removeTextOverlay(overlay.id)}
-                        onPress={() => {
-                          pushToHistory();
-                          const found = overlays.find(o => o.id === overlay.id);
-                          if (found) {
-                            originalOverlayBackup.current = { ...found };
-                          }
-                          isNewOverlay.current = false;
-                          setEditingTextId(overlay.id);
-                          setNewText(overlay.text);
-                        }}
-                      >
+                      <View style={{ padding: 4 }}>
                         <Text style={[styles.textOverlay, { color: overlay.color, fontSize: overlay.fontSize }]}>
                           {overlay.text}
                         </Text>
-                      </Pressable>
+                      </View>
                     </View>
                   );
                 })}
@@ -2352,23 +2406,11 @@ export function EditorScreen({
                     ]}
                     {...responder.panHandlers}
                   >
-                    <Pressable
-                      onLongPress={() => removeTextOverlay(overlay.id)}
-                      onPress={() => {
-                        pushToHistory();
-                        const found = overlays.find(o => o.id === overlay.id);
-                        if (found) {
-                          originalOverlayBackup.current = { ...found };
-                        }
-                        isNewOverlay.current = false;
-                        setEditingTextId(overlay.id);
-                        setNewText(overlay.text);
-                      }}
-                    >
+                    <View style={{ padding: 4 }}>
                       <Text style={[styles.textOverlay, { color: overlay.color, fontSize: overlay.fontSize }]}>
                         {overlay.text}
                       </Text>
-                    </Pressable>
+                    </View>
                   </View>
                 );
               })}
@@ -3059,6 +3101,23 @@ export function EditorScreen({
         </View>
       </Modal>
 
+      {/* Global Trash Zone for Drag Delete */}
+      {activeDraggingId !== null && (
+        <View style={styles.globalTrashZone} pointerEvents="none">
+          <View
+            style={[
+              styles.trashZoneContainer,
+              isOverTrash && styles.trashZoneActive,
+              isOverTrash ? { transform: [{ scale: 1.15 }] } : {}
+            ]}
+          >
+            <Ionicons name={isOverTrash ? "trash" : "trash-outline"} size={20} color="#fff" />
+            <Text style={styles.trashZoneText}>
+              {isOverTrash ? "Release to Delete" : "Drag here to delete"}
+            </Text>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -4162,6 +4221,41 @@ const styles = StyleSheet.create({
     zIndex: 30,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  globalTrashZone: {
+    position: 'absolute',
+    bottom: Platform.OS === 'ios' ? 48 : 28,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 9999,
+  },
+  trashZoneContainer: {
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    elevation: 8,
+  },
+  trashZoneActive: {
+    backgroundColor: '#ef4444',
+    borderColor: '#fca5a5',
+  },
+  trashZoneText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
+    marginLeft: 8,
   },
   cropIconText: {
     color: '#FFFFFF',

@@ -50,6 +50,8 @@ export function PickScreen({
   cameraModes = ['POST', 'STORY', 'REEL'],
   onCameraModeChange,
   defaultCameraMode,
+  maxSelection = 1,
+  aspectRatio = 'free',
 }: {
   items: MediaItem[];
   onPicked: (items: MediaItem[]) => void;
@@ -60,6 +62,8 @@ export function PickScreen({
   cameraModes?: string[];
   onCameraModeChange?: (mode: string) => void;
   defaultCameraMode?: string;
+  maxSelection?: number;
+  aspectRatio?: '1:1' | '4:3' | '4:5' | '16:9' | '9:16' | 'free';
 }) {
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<'GALLERY' | 'PHOTO' | 'VIDEO'>('GALLERY');
@@ -73,7 +77,21 @@ export function PickScreen({
   const [albums, setAlbums] = useState<Album[]>([]);
   const [loading, setLoading] = useState(false);
   const [previewUri, setPreviewUri] = useState<string | null>(null);
-  const [cropMode, setCropMode] = useState<'1:1' | 'original'>('1:1');
+
+  // Aspect ratio logic
+  const isRatioLocked = aspectRatio !== 'free';
+  const ratioMap: Record<string, number> = {
+    '1:1': 1,
+    '4:3': 4 / 3,
+    '4:5': 4 / 5,
+    '16:9': 16 / 9,
+    '9:16': 9 / 16,
+  };
+  const previewAspectRatio = isRatioLocked ? ratioMap[aspectRatio] ?? 1 : undefined;
+  // When ratio is locked, always use 'cover' (fills the fixed frame)
+  const [cropMode, setCropMode] = useState<'1:1' | 'original'>(
+    isRatioLocked ? '1:1' : '1:1'
+  );
   const [videoPaused, setVideoPaused] = useState(false);
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
@@ -248,7 +266,7 @@ export function PickScreen({
       setSelectedItems((prev) => {
         const exists = prev.find((i) => i.id === item.id);
         if (exists) return prev.filter((i) => i.id !== item.id);
-        if (prev.length >= 10) return prev;
+        if (prev.length >= maxSelection) return prev;
         return [...prev, item];
       });
     }
@@ -479,7 +497,15 @@ export function PickScreen({
         </View>
       </Modal>
 
-      <Animated.View style={[styles.preview, { transform: [{ scale: scaleAnim }] }]}>
+      <Animated.View
+        style={[
+          styles.preview,
+          { transform: [{ scale: scaleAnim }] },
+          isRatioLocked && previewAspectRatio
+            ? { height: undefined, aspectRatio: previewAspectRatio }
+            : {},
+        ]}
+      >
         {selectedMedia?.type === 'video' ? (
           <Pressable style={styles.previewImage} onPress={() => setVideoPaused((v) => !v)}>
             {playableUri ? (
@@ -488,7 +514,7 @@ export function PickScreen({
                 paused={videoPaused}
                 muted={false}
                 style={styles.previewImage}
-                resizeMode={cropMode === '1:1' ? 'cover' : 'contain'}
+                resizeMode="cover"
               />
             ) : (
               <Image
@@ -507,21 +533,31 @@ export function PickScreen({
           <Image
             source={{ uri: previewUri ?? selectedMedia?.uri }}
             style={[styles.previewImage, cropMode === '1:1' ? styles.squareCrop : styles.originalCrop]}
-            resizeMode={cropMode === '1:1' ? 'cover' : 'contain'}
+            resizeMode={isRatioLocked ? 'cover' : (cropMode === '1:1' ? 'cover' : 'contain')}
           />
         )}
 
         <View style={styles.previewControls}>
-          <Pressable
-            style={styles.cropToggle}
-            onPress={() => setCropMode((v) => (v === '1:1' ? 'original' : '1:1'))}
-          >
-            <Ionicons
-              name={cropMode === '1:1' ? 'square-outline' : 'expand-outline'}
-              size={20}
-              color="#fff"
-            />
-          </Pressable>
+          {/* Ratio lock badge */}
+          {isRatioLocked && (
+            <View style={styles.ratioBadge}>
+              <Text style={styles.ratioBadgeText}>{aspectRatio}</Text>
+            </View>
+          )}
+
+          {/* Crop toggle — hidden when ratio is locked */}
+          {!isRatioLocked && (
+            <Pressable
+              style={styles.cropToggle}
+              onPress={() => setCropMode((v) => (v === '1:1' ? 'original' : '1:1'))}
+            >
+              <Ionicons
+                name={cropMode === '1:1' ? 'square-outline' : 'expand-outline'}
+                size={20}
+                color="#fff"
+              />
+            </Pressable>
+          )}
         </View>
       </Animated.View>
 
@@ -534,9 +570,36 @@ export function PickScreen({
           <Ionicons name="chevron-down" size={16} color="#fff" style={{ marginLeft: 6 }} />
         </Pressable>
 
-        <Pressable style={[styles.multiSelectBtn, multiSelect && styles.multiSelectBtnActive]} onPress={toggleMultiSelect}>
-          <Text style={[styles.multiSelectText, multiSelect && styles.multiSelectTextActive]}>{multiSelect ? 'Done' : 'Select'}</Text>
-        </Pressable>
+        {/* Only show Select/Done button when maxSelection > 1 */}
+        {maxSelection > 1 && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            {multiSelect && (
+              <Text style={{ color: '#3b82f6', fontSize: 12, fontWeight: '700' }}>
+                {selectedItems.length}/{maxSelection}
+              </Text>
+            )}
+            <Pressable
+              style={[
+                styles.multiSelectBtn,
+                multiSelect && styles.multiSelectBtnActive,
+                multiSelect && selectedItems.length === 0 && { opacity: 0.35 },
+              ]}
+              onPress={() => {
+                if (multiSelect) {
+                  handleNext();
+                } else {
+                  toggleMultiSelect();
+                }
+              }}
+              disabled={multiSelect && selectedItems.length === 0}
+            >
+              <Text style={[
+                styles.multiSelectText,
+                multiSelect && styles.multiSelectTextActive,
+              ]}>{multiSelect ? 'Done' : 'Select'}</Text>
+            </Pressable>
+          </View>
+        )}
       </View>
 
       <FlatList
@@ -794,6 +857,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   cropIcon: { color: '#fff', fontSize: 16 },
+  ratioBadge: {
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  ratioBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
   albumRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

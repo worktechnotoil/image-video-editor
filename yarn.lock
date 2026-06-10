@@ -2586,7 +2586,7 @@ __metadata:
     "@react-native/metro-config": "npm:0.84.0"
     "@react-native/new-app-screen": "npm:0.84.0"
     "@react-native/typescript-config": "npm:0.84.0"
-    "@technotoil/image-video-editor": "file:.."
+    "@technotoil/image-video-editor": "file:../package-0.1.1.tgz"
     "@types/jest": "npm:^29.5.13"
     "@types/react": "npm:^19.2.0"
     "@types/react-native-vector-icons": "npm:^6.4.18"
@@ -2605,9 +2605,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@technotoil/image-video-editor@file:..::locator=%40technotoil%2Fimage-video-editor-example%40workspace%3Aexample":
-  version: 0.1.0
-  resolution: "@technotoil/image-video-editor@file:..#..::hash=ebd411&locator=%40technotoil%2Fimage-video-editor-example%40workspace%3Aexample"
+"@technotoil/image-video-editor@file:../package-0.1.1.tgz::locator=%40technotoil%2Fimage-video-editor-example%40workspace%3Aexample":
+  version: 0.1.1
+  resolution: "@technotoil/image-video-editor@file:../package-0.1.1.tgz#../package-0.1.1.tgz::hash=9bb5e2&locator=%40technotoil%2Fimage-video-editor-example%40workspace%3Aexample"
   peerDependencies:
     react: ">=18.0.0"
     react-native: ">=0.70.0"
@@ -2615,7 +2615,7 @@ __metadata:
     react-native-safe-area-context: ^5.5.2
     react-native-vector-icons: ^10.3.0
     react-native-video: ">=6.0.0"
-  checksum: 10c0/ff28b33475eaff3f7a23d045213aa08c8c99915df271f2545d8d532135e527b78868d0dccdd3b4cf4b86ef4a1b77ca334872dc5a872083f870e109bf180ee9cb
+  checksum: 10c0/84be026ce7e99ec889d11ecc3ca14c54293b8cb034f82d7f63e686fd5214482c2d598bb4573f326039f0c705ee0a2524080e9d5a65c0b5860114347835169d08
   languageName: node
   linkType: hard
 

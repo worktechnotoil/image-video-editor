@@ -58,6 +58,8 @@ export default function App() {
           headerTitle="New post"
           cameraModes={['POST', 'STORY', 'REEL']}
           defaultCameraMode="REEL"
+          maxSelection={3}
+          aspectRatio="4:5"
           onCancelPress={() => setEditorVisible(false)}
           onFinishExport={handleFinishExport}
           musicList={DUMMY_MUSIC_LIST}

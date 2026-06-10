@@ -99,12 +99,20 @@ interface CropScreenProps {
   item: MediaItem;
   onBack: () => void;
   onSave: (uri: string, thumb?: string, duration?: number) => void;
+  aspectRatio?: '1:1' | '4:3' | '4:5' | '16:9' | '9:16' | 'free';
 }
-export function CropScreen({ item, onBack, onSave }: CropScreenProps) {
+export function CropScreen({ item, onBack, onSave, aspectRatio = 'free' }: CropScreenProps) {
+  const isRatioLocked = aspectRatio !== 'free';
+  const getInitialRatioLabel = () => {
+    if (!aspectRatio || aspectRatio === 'free') return 'Free';
+    if (aspectRatio === '1:1') return 'Square';
+    return aspectRatio; // '4:3', '4:5', '16:9', '9:16'
+  };
+
   const [straightenAngle, setStraightenAngle] = useState(0);
   const [rotation, setRotation] = useState(0);
-  const [selectedRatio, setSelectedRatio] = useState<string>('Free');
-  const [isFixedRatio, setIsFixedRatio] = useState(false);
+  const [selectedRatio, setSelectedRatio] = useState<string>(getInitialRatioLabel());
+  const [isFixedRatio, setIsFixedRatio] = useState(isRatioLocked);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -409,8 +417,8 @@ export function CropScreen({ item, onBack, onSave }: CropScreenProps) {
     setRotation(0);
     setFlipX(false);
     setFlipY(false);
-    setSelectedRatio('Free');
-    setIsFixedRatio(false);
+    setSelectedRatio(getInitialRatioLabel());
+    setIsFixedRatio(isRatioLocked);
   };
 
   const sliderPan = useRef(
@@ -565,9 +573,15 @@ export function CropScreen({ item, onBack, onSave }: CropScreenProps) {
             <View style={styles.panelTitleContainer}>
               <Text style={styles.panelTitle}>Aspect Ratio</Text>
             </View>
-            <Pressable style={[styles.fixedRatioBtn, isFixedRatio && styles.fixedRatioBtnActive]} onPress={() => setIsFixedRatio(!isFixedRatio)}>
-              <Text style={styles.fixedRatioText}>{isFixedRatio ? 'Locked' : 'Unlocked'}</Text>
-            </Pressable>
+            {!isRatioLocked ? (
+              <Pressable style={[styles.fixedRatioBtn, isFixedRatio && styles.fixedRatioBtnActive]} onPress={() => setIsFixedRatio(!isFixedRatio)}>
+                <Text style={styles.fixedRatioText}>{isFixedRatio ? 'Locked' : 'Unlocked'}</Text>
+              </Pressable>
+            ) : (
+              <View style={[styles.fixedRatioBtn, styles.fixedRatioBtnActive, { opacity: 0.7 }]}>
+                <Text style={styles.fixedRatioText}>Locked</Text>
+              </View>
+            )}
           </View>
 
           {/* Straighten Control */}
@@ -593,29 +607,31 @@ export function CropScreen({ item, onBack, onSave }: CropScreenProps) {
           </View>
 
           {/* Ratio Selector */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.ratioScroll} contentContainerStyle={styles.ratioContent}>
-            {ratios.map((r) => {
-              const isSelected = selectedRatio === r.label;
-              const boxRatio = r.ratio || 1;
-              // Limit box size for icon
-              const boxStyle = {
-                width: boxRatio > 1 ? 24 : 24 * boxRatio,
-                height: boxRatio > 1 ? 24 / boxRatio : 24,
-                borderWidth: 1.5,
-                borderColor: isSelected ? '#4A8CFF' : '#666',
-                borderRadius: 2,
-              };
+          {!isRatioLocked && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.ratioScroll} contentContainerStyle={styles.ratioContent}>
+              {ratios.map((r) => {
+                const isSelected = selectedRatio === r.label;
+                const boxRatio = r.ratio || 1;
+                // Limit box size for icon
+                const boxStyle = {
+                  width: boxRatio > 1 ? 24 : 24 * boxRatio,
+                  height: boxRatio > 1 ? 24 / boxRatio : 24,
+                  borderWidth: 1.5,
+                  borderColor: isSelected ? '#4A8CFF' : '#666',
+                  borderRadius: 2,
+                };
 
-              return (
-                <Pressable key={r.label} style={styles.ratioItem} onPress={() => handleRatioSelect(r.label, r.ratio)}>
-                  <View style={[styles.ratioIconBox, isSelected && styles.ratioIconBoxActive]}>
-                    <View style={boxStyle} />
-                  </View>
-                  <Text style={[styles.ratioLabel, isSelected && styles.ratioLabelActive]}>{r.label}</Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+                return (
+                  <Pressable key={r.label} style={styles.ratioItem} onPress={() => handleRatioSelect(r.label, r.ratio)}>
+                    <View style={[styles.ratioIconBox, isSelected && styles.ratioIconBoxActive]}>
+                      <View style={boxStyle} />
+                    </View>
+                    <Text style={[styles.ratioLabel, isSelected && styles.ratioLabelActive]}>{r.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          )}
 
           {/* Footer Status with Save Button */}
           <View style={styles.footerStatus}>
