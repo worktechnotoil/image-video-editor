@@ -119,6 +119,7 @@ RCT_REMAP_METHOD(listAlbums,
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
  {
+   dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
    @try {
      NSNumber *limit = options[@"limit"] ?: @200;
      NSNumber *offset = options[@"offset"] ?: @0;
@@ -233,11 +234,12 @@ RCT_REMAP_METHOD(listAlbums,
       [results addObject:item];
     }
 
-    resolve(results);
-  } @catch (NSException *exception) {
-    reject(@"list_failed", exception.reason, nil);
+      resolve(results);
+    } @catch (NSException *exception) {
+      reject(@"list_failed", exception.reason, nil);
+    }
+    });
   }
-}
 
 - (void)exportVideoFallback:(PHAsset *)asset
                    resolver:(RCTPromiseResolveBlock)resolve
@@ -299,19 +301,20 @@ RCT_REMAP_METHOD(exportAsset,
                  resolver:(RCTPromiseResolveBlock)resolve
                  rejecter:(RCTPromiseRejectBlock)reject)
 {
-  PHFetchResult<PHAsset *> *result = [PHAsset fetchAssetsWithLocalIdentifiers:@[localId] options:nil];
-  PHAsset *asset = result.firstObject;
-  if (!asset) {
-    reject(@"not_found", @"Asset not found", nil);
-    return;
-  }
+  dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+    PHFetchResult<PHAsset *> *result = [PHAsset fetchAssetsWithLocalIdentifiers:@[localId] options:nil];
+    PHAsset *asset = result.firstObject;
+    if (!asset) {
+      reject(@"not_found", @"Asset not found", nil);
+      return;
+    }
 
-  if (asset.mediaType == PHAssetMediaTypeImage) {
-    PHImageRequestOptions *opts = [[PHImageRequestOptions alloc] init];
-    opts.synchronous = YES;
-    opts.networkAccessAllowed = YES;
+    if (asset.mediaType == PHAssetMediaTypeImage) {
+      PHImageRequestOptions *opts = [[PHImageRequestOptions alloc] init];
+      opts.synchronous = YES;
+      opts.networkAccessAllowed = YES;
 
-    __block NSString *outUri = nil;
+      __block NSString *outUri = nil;
     [[PHImageManager defaultManager] requestImageDataAndOrientationForAsset:asset options:opts resultHandler:^(NSData * _Nullable imageData, NSString * _Nullable dataUTI, CGImagePropertyOrientation orientation, NSDictionary * _Nullable info) {
       if (imageData) {
         NSString *fileName = [NSString stringWithFormat:@"export_%@.jpg", [[NSUUID UUID] UUIDString]];
@@ -357,6 +360,7 @@ RCT_REMAP_METHOD(exportAsset,
   } else {
     reject(@"unsupported", @"Unsupported asset type", nil);
   }
+  });
 }
 
 RCT_REMAP_METHOD(saveToGallery,

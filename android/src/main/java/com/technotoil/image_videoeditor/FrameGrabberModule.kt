@@ -34,15 +34,11 @@ class FrameGrabberModule(private val reactContext: ReactApplicationContext) :
       
       var bitmap: Bitmap? = null
       try {
-        bitmap = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
+        bitmap = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
       } catch (e: Exception) {
-        // Fallback
-      }
-      
-      if (bitmap == null) {
         try {
           bitmap = retriever.getFrameAtTime(timeUs)
-        } catch (e: Exception) {
+        } catch (e2: Exception) {
           // Fallback
         }
       }

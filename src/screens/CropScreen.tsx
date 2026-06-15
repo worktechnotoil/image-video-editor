@@ -100,8 +100,9 @@ interface CropScreenProps {
   onBack: () => void;
   onSave: (uri: string, thumb?: string, duration?: number) => void;
   aspectRatio?: '1:1' | '4:3' | '4:5' | '16:9' | '9:16' | 'free';
+  maxVideoDurationMs?: number;
 }
-export function CropScreen({ item, onBack, onSave, aspectRatio = 'free' }: CropScreenProps) {
+export function CropScreen({ item, onBack, onSave, aspectRatio = 'free', maxVideoDurationMs }: CropScreenProps) {
   const isRatioLocked = aspectRatio !== 'free';
   const getInitialRatioLabel = () => {
     if (!aspectRatio || aspectRatio === 'free') return 'Free';
@@ -402,9 +403,13 @@ export function CropScreen({ item, onBack, onSave, aspectRatio = 'free' }: CropS
 
       const outUri = item.type === 'image'
         ? await editImage(item.uri, options)
-        : await trimVideo(item.uri, { startMs: 0, endMs: item.durationMs || 10000, ...options });
+        : await trimVideo(item.uri, { startMs: 0, endMs: maxVideoDurationMs ? Math.min(item.durationMs || 10000, maxVideoDurationMs) : (item.durationMs || 10000), ...options });
 
-      onSave(outUri, item.type === 'image' ? outUri : undefined, item.durationMs);
+      const clampedDuration = item.type === 'video' && maxVideoDurationMs 
+        ? Math.min(item.durationMs || 10000, maxVideoDurationMs) 
+        : item.durationMs;
+
+      onSave(outUri, item.type === 'image' ? outUri : undefined, clampedDuration);
     } catch (err: any) {
       Alert.alert('Apply failed', err?.message ?? 'Could not process crop.');
     } finally {

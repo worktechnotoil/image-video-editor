@@ -33,15 +33,15 @@ export default function App() {
   const [editorVisible, setEditorVisible] = useState(false);
   const [exportedResult, setExportedResult] = useState<{
     paths: string[];
-    cameraMode: string;
+    cameraMode?: string;
     media: any[];
   } | null>(null);
 
-  const handleFinishExport = (editedMedia: any, paths: string[], editedArray: any[], cameraMode: string) => {
+  const handleFinishExport = (editedMedia: any, paths: string[], editedArray: any[], cameraMode?: string) => {
     console.log('App.tsx - Export completed!');
     console.log('Exported Paths:', paths);
     console.log('Selected Camera Mode:', cameraMode);
-    
+
     setExportedResult({
       paths,
       cameraMode,
@@ -60,6 +60,9 @@ export default function App() {
           defaultCameraMode="REEL"
           maxSelection={3}
           aspectRatio="4:5"
+          mediaType="any"
+          mediaTabs={['GALLERY', 'PHOTO', 'VIDEO']}
+          maxVideoDurationMs={30000}
           onCancelPress={() => setEditorVisible(false)}
           onFinishExport={handleFinishExport}
           musicList={DUMMY_MUSIC_LIST}
@@ -84,8 +87,8 @@ export default function App() {
           </Text>
         </View>
 
-        <TouchableOpacity 
-          style={styles.launchButton} 
+        <TouchableOpacity
+          style={styles.launchButton}
           activeOpacity={0.8}
           onPress={() => setEditorVisible(true)}
         >
@@ -99,7 +102,7 @@ export default function App() {
               <Text style={styles.metaLabel}>Camera Mode:</Text>
               <Text style={styles.metaValue}>{exportedResult.cameraMode}</Text>
             </View>
-            
+
             <Text style={styles.metaLabel}>Exported File URLs (Ready for Upload):</Text>
             {exportedResult.paths.map((path, idx) => (
               <View key={idx} style={styles.pathItem}>

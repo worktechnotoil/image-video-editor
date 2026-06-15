@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Alert, StatusBar, useColorScheme } from 'react-native';
+import { Alert, StatusBar, useColorScheme, View, Text, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { PickScreen } from '../screens/PickScreen';
 import { CropScreen } from '../screens/CropScreen';
@@ -7,6 +7,9 @@ import { EditorScreen } from '../screens/EditorScreen';
 import { ExportScreen } from '../screens/ExportScreen';
 import { exportAsset } from '../native/MediaLibrary';
 import type { MediaItem, MusicTrack } from '../types';
+import Ionicons from 'react-native-vector-icons/Ionicons';
+
+Ionicons.loadFont().catch(() => {});
 
 export interface VideoEditorProps {
   onClose?: () => void;
@@ -14,7 +17,8 @@ export interface VideoEditorProps {
     editedMedia: Record<string, MediaItem>,
     paths: string[],
     editedArray: MediaItem[],
-    cameraMode?: string
+    cameraMode?: string,
+    globalMusic?: MusicTrack
   ) => void;
   headerTitle?: string;
   customCancelIcon?: React.ReactNode;
@@ -30,6 +34,14 @@ export interface VideoEditorProps {
    * '16:9' = Landscape, '9:16' = Portrait, 'free' = No restriction (default)
    */
   aspectRatio?: '1:1' | '4:3' | '4:5' | '16:9' | '9:16' | 'free';
+  /**
+   * Maximum video duration allowed (in milliseconds).
+   */
+  maxVideoDurationMs?: number;
+  /** Filter the media type that can be picked. Default: 'any' */
+  mediaType?: 'photo' | 'video' | 'any';
+  /** Control which tabs are shown in the picker. Default: ['GALLERY', 'PHOTO', 'VIDEO'] */
+  mediaTabs?: ('GALLERY' | 'PHOTO' | 'VIDEO')[];
 }
 
 export default function VideoEditor({
@@ -43,6 +55,9 @@ export default function VideoEditor({
   musicList,
   maxSelection = 1,
   aspectRatio = 'free',
+  maxVideoDurationMs,
+  mediaType = 'any',
+  mediaTabs = ['GALLERY', 'PHOTO', 'VIDEO'],
 }: VideoEditorProps) {
   const clampedMax = Math.min(5, Math.max(1, maxSelection));
   const isDarkMode = useColorScheme() === 'dark';
@@ -52,19 +67,31 @@ export default function VideoEditor({
   const [editedMedia, setEditedMedia] = useState<Record<string, MediaItem>>({});
   const [originals, setOriginals] = useState<Record<string, MediaItem>>({});
   const [selectedCameraMode, setSelectedCameraMode] = useState<string>(defaultCameraMode || 'STORY');
+  const [processing, setProcessing] = useState(false);
+  const [exportCache, setExportCache] = useState<Record<string, string>>({});
 
   const ensureExported = async (item: MediaItem, ignoreEdits = false): Promise<MediaItem> => {
+    console.log(`[ensureExported] Start for item: ${item.id}, uri: ${item.uri}`);
     if (!ignoreEdits && editedMedia[item.id]) {
+      console.log(`[ensureExported] Found in editedMedia! Returning early.`);
       return editedMedia[item.id];
     }
+    if (exportCache[item.id]) {
+      console.log(`[ensureExported] Found in exportCache! Returning cached URI: ${exportCache[item.id]}`);
+      return { ...item, uri: exportCache[item.id] };
+    }
     if (!item.uri.startsWith('ph://') && !item.uri.startsWith('content://')) {
+      console.log(`[ensureExported] URI is already local file, skipping native export.`);
       return item;
     }
     try {
+      console.log(`[ensureExported] Calling native exportAsset...`);
       const fileUri = await exportAsset(item.id);
+      console.log(`[ensureExported] Native export success! New URI: ${fileUri}`);
+      setExportCache(prev => ({ ...prev, [item.id]: fileUri }));
       return { ...item, uri: fileUri };
     } catch (err: any) {
-      console.error('ASSET EXPORT FROM LIBRARY FAILED:', err?.message ?? err);
+      console.error('[ensureExported] ASSET EXPORT FROM LIBRARY FAILED:', err?.message ?? err);
       return item;
     }
   };
@@ -77,8 +104,9 @@ export default function VideoEditor({
           backgroundColor="transparent"
           translucent={true}
         />
-        {screen === 'pick' && (
+        <View style={{ flex: 1, display: screen === 'pick' ? 'flex' : 'none' }}>
           <PickScreen
+            isActive={screen === 'pick'}
             items={items}
             headerTitle={headerTitle}
             customCancelIcon={customCancelIcon}
@@ -90,6 +118,8 @@ export default function VideoEditor({
             onCameraModeChange={(mode) => {
               setSelectedCameraMode(mode);
             }}
+            mediaType={mediaType}
+            mediaTabs={mediaTabs}
             onPicked={(picked: MediaItem[]) => {
               // Save originals for "Fresh Start" editing
               const newOriginals = { ...originals };
@@ -101,22 +131,48 @@ export default function VideoEditor({
               setItems(picked);
             }}
             onNext={async (picked) => {
-              if (!picked || picked.length === 0) {
+              console.log(`[onNext] Triggered with ${picked?.length} items`);
+              if (processing) {
+                console.log(`[onNext] Aborting, already processing!`);
                 return;
               }
-              const resolvedItems = await Promise.all(
-                picked.map(item => ensureExported(item, false))
-              );
-              setItems(resolvedItems);
-              setCurrent(resolvedItems[0]);
-              setScreen('editor');
+              if (!picked || picked.length === 0) {
+                console.log(`[onNext] Aborting, picked is empty!`);
+                return;
+              }
+              console.log(`[onNext] Setting processing=true`);
+              setProcessing(true);
+              
+              try {
+                console.log(`[onNext] Starting Promise.all for ${picked.length} items`);
+                const resolvedItems = await Promise.all(
+                  picked.map(item => ensureExported(item, false))
+                );
+                
+                console.log(`[onNext] Promise.all completed! Updating state...`);
+                setItems(resolvedItems);
+                setCurrent(resolvedItems[0]);
+                setScreen('editor');
+                console.log(`[onNext] Screen set to editor`);
+              } catch (e) {
+                console.error(`[onNext] Promise.all threw an error!`, e);
+              } finally {
+                console.log(`[onNext] Finally block - setting processing=false`);
+                setProcessing(false);
+              }
             }}
           />
-        )}
+          {processing && (
+            <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }}>
+              <ActivityIndicator size="large" color="#ffffff" />
+            </View>
+          )}
+        </View>
         {screen === 'editor' && current && (
            <EditorScreen 
             items={items}
             initialIndex={Math.max(0, items.findIndex(it => it.id === current.id))}
+            maxVideoDurationMs={maxVideoDurationMs}
             onBack={() => {
               setEditedMedia({});
               const restoredItems = items.map(item => originals[item.id] || item);
@@ -157,6 +213,7 @@ export default function VideoEditor({
           <CropScreen
             item={current}
             aspectRatio={aspectRatio}
+            maxVideoDurationMs={maxVideoDurationMs}
             onBack={() => setScreen('editor')}
             onSave={(uri, thumbnailUri, durationMs) => {
               const updated = {

@@ -51,6 +51,7 @@ export type VideoTrimOptions = ImageEditOptions & {
   mute?: boolean;
   isImage?: boolean;
   musicUri?: string;
+  musicOffsetMs?: number;
 };
 
 export type FrameCaptureOptions = {

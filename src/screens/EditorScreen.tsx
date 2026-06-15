@@ -194,6 +194,7 @@ export function EditorScreen({
   onSaved,
   onOpenCrop,
   musicList,
+  maxVideoDurationMs,
 }: {
   items: MediaItem[];
   initialIndex?: number;
@@ -201,10 +202,15 @@ export function EditorScreen({
   onSaved: (updatedItems: MediaItem[]) => void;
   onOpenCrop: (item: MediaItem) => void;
   musicList?: MusicTrack[];
+  maxVideoDurationMs?: number;
 }) {
   const [activeIndex, setActiveIndex] = useState(initialIndex);
   const currentItem = items[activeIndex] || items[0];
   const item = currentItem; // Aliasing to 'item' for ease of compatibility
+
+  useEffect(() => {
+    setActiveIndex(initialIndex);
+  }, [initialIndex]);
 
   const [activeFilter, setActiveFilter] = useState('none');
   const [imageOptions, setImageOptions] = useState<ImageEditOptions>({
@@ -216,14 +222,22 @@ export function EditorScreen({
     saturation: 1,
     grayscale: false,
   });
+  const [panel, setPanel] = useState<'filter' | 'edit' | 'trim' | 'transform' | 'frame' | 'text' | 'ar' | 'music' | 'sticker' | 'effects' | 'caption' | 'addclip'>(item.type === 'video' ? 'trim' : 'filter');
   const [trimStart, setTrimStart] = useState(0);
-  const [trimEnd, setTrimEnd] = useState(item.durationMs || 10000);
+  const [trimEnd, setTrimEnd] = useState(() => {
+    const end = item.durationMs || 10000;
+    return maxVideoDurationMs ? Math.min(end, maxVideoDurationMs) : end;
+  });
 
   useEffect(() => {
     setTrimStart(0);
-    setTrimEnd(item.durationMs || 10000);
+    const end = item.durationMs || maxVideoDurationMs || 10000;
+    setTrimEnd(maxVideoDurationMs ? Math.min(end, maxVideoDurationMs) : end);
     setThumbnails([]);
-  }, [item.id, item.durationMs]);
+    if (item.type === 'video' && maxVideoDurationMs && end > maxVideoDurationMs) {
+      setPanel('trim');
+    }
+  }, [item.id, item.durationMs, maxVideoDurationMs]);
 
   const [editsHistory, setEditsHistory] = useState<Record<string, any>>({});
   const editsHistoryRef = useRef<Record<string, any>>({});
@@ -281,7 +295,7 @@ export function EditorScreen({
       setCropOffset(saved.cropOffset);
       setZoomScale(saved.zoomScale);
       setStraightenAngle(saved.straightenAngle);
-      setIsMuted(saved.isMuted);
+      setIsMuted(selectedMusic ? true : saved.isMuted);
     } else {
       setActiveFilter('none');
       setImageOptions({
@@ -294,13 +308,21 @@ export function EditorScreen({
         grayscale: false,
       });
       setTrimStart(0);
-      setTrimEnd(targetItem.durationMs || 10000);
+      const end = targetItem.durationMs || 10000;
+      setTrimEnd(maxVideoDurationMs ? Math.min(end, maxVideoDurationMs) : end);
       setOverlays([]);
       setCropRatio(null);
       setCropOffset({ x: 0, y: 0 });
       setZoomScale(1);
       setStraightenAngle(0);
-      setIsMuted(false);
+      setIsMuted(selectedMusic ? true : false);
+    }
+    
+    // Force trim panel if video is too long
+    if (targetItem.type === 'video' && maxVideoDurationMs && targetItem.durationMs && targetItem.durationMs > maxVideoDurationMs) {
+      setPanel('trim');
+    } else if (!saved) {
+      setPanel(targetItem.type === 'video' ? 'trim' : 'filter');
     }
   };
 
@@ -362,13 +384,15 @@ export function EditorScreen({
         color: o.color,
         fontSize: o.fontSize * renderScale,
       })),
+      frameUri: edits.imageOptions.frame && FRAME_IMAGES[edits.imageOptions.frame] 
+        ? Image.resolveAssetSource(FRAME_IMAGES[edits.imageOptions.frame]).uri 
+        : undefined,
     };
   };
 
   const [saving, setSaving] = useState(false);
   const [videoPaused, setVideoPaused] = useState(false);
-  const [panel, setPanel] = useState<'filter' | 'edit' | 'trim' | 'transform' | 'frame' | 'text' | 'ar' | 'music' | 'sticker' | 'effects' | 'caption' | 'addclip'>(item.type === 'video' ? 'trim' : 'filter');
-  const resolvedMusicList = musicList || DUMMY_MUSIC_LIST;
+  const resolvedMusicList = musicList || [];
 
   const [selectedMusic, setSelectedMusic] = useState<MusicTrack | null>(null);
   const [musicPaused, setMusicPaused] = useState(false);
@@ -1065,12 +1089,19 @@ export function EditorScreen({
         color: o.color,
         fontSize: o.fontSize * renderScale,
       })),
+      frameUri: imageOptions.frame && FRAME_IMAGES[imageOptions.frame] 
+        ? Image.resolveAssetSource(FRAME_IMAGES[imageOptions.frame]).uri 
+        : undefined,
     };
   }, [imageOptions, cropOffset, maxPan, dimensions, cropRatio, straightenAngle, overlays]);
 
   // For visual trim
 
   const duration = item.durationMs ?? 10_000;
+  const durationRef = useRef(duration);
+  useEffect(() => {
+    durationRef.current = duration;
+  }, [duration]);
 
   const formatTime = (ms: number) => {
     const totalSec = Math.floor(ms / 1000);
@@ -1138,6 +1169,20 @@ export function EditorScreen({
     }
   }, [item.type, item.uri, duration, thumbnails.length]);
 
+  const leftOverlayRef = useRef<View>(null);
+  const rightOverlayRef = useRef<View>(null);
+  const selectionRangeRef = useRef<View>(null);
+  const leftHandleRef = useRef<View>(null);
+  const rightHandleRef = useRef<View>(null);
+
+  const updateNativeRefs = (newStartX: number, newEndX: number) => {
+    leftOverlayRef.current?.setNativeProps({ style: { width: newStartX } });
+    rightOverlayRef.current?.setNativeProps({ style: { left: newEndX } });
+    selectionRangeRef.current?.setNativeProps({ style: { left: newStartX, width: newEndX - newStartX } });
+    leftHandleRef.current?.setNativeProps({ style: { left: newStartX - 16 } });
+    rightHandleRef.current?.setNativeProps({ style: { left: newEndX - 16 } });
+  };
+
   const startPanOffset = useRef(0);
   const startPan = useRef(
     PanResponder.create({
@@ -1152,20 +1197,86 @@ export function EditorScreen({
         setScrollEnabled(false);
       },
       onPanResponderMove: (_, gesture) => {
-        const newX = Math.max(0, Math.min(endX.current - 32, startPanOffset.current + gesture.dx));
+        let newX = Math.max(0, Math.min(endX.current - 32, startPanOffset.current + gesture.dx));
+        let newTime = (newX / TIMELINE_WIDTH) * durationRef.current;
+        
+        const currentTrimEnd = (endX.current / TIMELINE_WIDTH) * durationRef.current;
+        if (maxVideoDurationMs && currentTrimEnd - newTime > maxVideoDurationMs) {
+          newTime = currentTrimEnd - maxVideoDurationMs;
+          newX = (newTime / durationRef.current) * TIMELINE_WIDTH;
+        }
+
         startX.current = newX;
-        const newTime = (newX / TIMELINE_WIDTH) * duration;
-        setTrimStart(newTime);
+        updateNativeRefs(newX, endX.current);
         throttledSeek(newTime);
       },
       onPanResponderRelease: () => {
         isDraggingHandle.current = false;
         setScrollEnabled(true);
+        setTrimStart((startX.current / TIMELINE_WIDTH) * durationRef.current);
+        setTrimEnd((endX.current / TIMELINE_WIDTH) * durationRef.current);
         setSeekToMs(-1);
       },
       onPanResponderTerminate: () => {
         isDraggingHandle.current = false;
         setScrollEnabled(true);
+        setTrimStart((startX.current / TIMELINE_WIDTH) * durationRef.current);
+        setTrimEnd((endX.current / TIMELINE_WIDTH) * durationRef.current);
+        setSeekToMs(-1);
+      }
+    })
+  ).current;
+
+  const middlePanOffsetStart = useRef(0);
+  const middlePanOffsetEnd = useRef(0);
+  
+  const middlePan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponderCapture: () => true,
+      onPanResponderGrant: () => {
+        pushToHistory();
+        middlePanOffsetStart.current = startX.current;
+        middlePanOffsetEnd.current = endX.current;
+        isDraggingHandle.current = true;
+        setScrollEnabled(false);
+      },
+      onPanResponderMove: (_, gesture) => {
+        const windowWidth = middlePanOffsetEnd.current - middlePanOffsetStart.current;
+        
+        let newStartX = middlePanOffsetStart.current + gesture.dx;
+        let newEndX = middlePanOffsetEnd.current + gesture.dx;
+        
+        if (newStartX < 0) {
+          newStartX = 0;
+          newEndX = windowWidth;
+        }
+        if (newEndX > TIMELINE_WIDTH) {
+          newEndX = TIMELINE_WIDTH;
+          newStartX = TIMELINE_WIDTH - windowWidth;
+        }
+
+        startX.current = newStartX;
+        endX.current = newEndX;
+
+        const newStartTime = (newStartX / TIMELINE_WIDTH) * durationRef.current;
+        updateNativeRefs(newStartX, newEndX);
+        throttledSeek(newStartTime);
+      },
+      onPanResponderRelease: () => {
+        isDraggingHandle.current = false;
+        setScrollEnabled(true);
+        setTrimStart((startX.current / TIMELINE_WIDTH) * durationRef.current);
+        setTrimEnd((endX.current / TIMELINE_WIDTH) * durationRef.current);
+        setSeekToMs(-1);
+      },
+      onPanResponderTerminate: () => {
+        isDraggingHandle.current = false;
+        setScrollEnabled(true);
+        setTrimStart((startX.current / TIMELINE_WIDTH) * durationRef.current);
+        setTrimEnd((endX.current / TIMELINE_WIDTH) * durationRef.current);
         setSeekToMs(-1);
       }
     })
@@ -1185,20 +1296,31 @@ export function EditorScreen({
         setScrollEnabled(false);
       },
       onPanResponderMove: (_, gesture) => {
-        const newX = Math.min(TIMELINE_WIDTH, Math.max(startX.current + 32, endPanOffset.current + gesture.dx));
+        let newX = Math.min(TIMELINE_WIDTH, Math.max(startX.current + 32, endPanOffset.current + gesture.dx));
+        let newTime = (newX / TIMELINE_WIDTH) * durationRef.current;
+
+        const currentTrimStart = (startX.current / TIMELINE_WIDTH) * durationRef.current;
+        if (maxVideoDurationMs && newTime - currentTrimStart > maxVideoDurationMs) {
+          newTime = currentTrimStart + maxVideoDurationMs;
+          newX = (newTime / durationRef.current) * TIMELINE_WIDTH;
+        }
+
         endX.current = newX;
-        const newTime = (newX / TIMELINE_WIDTH) * duration;
-        setTrimEnd(newTime);
+        updateNativeRefs(startX.current, newX);
         throttledSeek(newTime);
       },
       onPanResponderRelease: () => {
         isDraggingHandle.current = false;
         setScrollEnabled(true);
+        setTrimStart((startX.current / TIMELINE_WIDTH) * durationRef.current);
+        setTrimEnd((endX.current / TIMELINE_WIDTH) * durationRef.current);
         setSeekToMs(-1);
       },
       onPanResponderTerminate: () => {
         isDraggingHandle.current = false;
         setScrollEnabled(true);
+        setTrimStart((startX.current / TIMELINE_WIDTH) * durationRef.current);
+        setTrimEnd((endX.current / TIMELINE_WIDTH) * durationRef.current);
         setSeekToMs(-1);
       }
     })
@@ -1501,11 +1623,15 @@ export function EditorScreen({
           });
         }
       } else {
+        const safeEndMs = Math.min(trimEnd, item.durationMs || 10000);
+        const safeStartMs = Math.min(trimStart, Math.max(0, safeEndMs - 100));
+        const isFullTrim = trimStart === 0 && trimEnd >= (item.durationMs || 10000);
+        
         exportUri = await trimVideo(item.uri, {
-          startMs: trimStart,
-          endMs: trimEnd,
+          startMs: safeStartMs,
+          endMs: safeEndMs,
           mute: isMuted,
-          musicUri: selectedMusic?.url || undefined,
+          ...(selectedMusic?.url ? { musicUri: selectedMusic.url } : {}),
           ...activeOptions,
         });
       }
@@ -1524,6 +1650,7 @@ export function EditorScreen({
       saveEditsForIndex(activeIndex);
 
       const updatedItems = [...items];
+      let cumulativeMusicOffsetMs = 0;
 
       for (let i = 0; i < items.length; i++) {
         const targetItem = items[i];
@@ -1553,6 +1680,7 @@ export function EditorScreen({
               outUri = await trimVideo(outUri, {
                 isImage: true,
                 musicUri: selectedMusic.url,
+                musicOffsetMs: cumulativeMusicOffsetMs,
                 rotateDegrees: 0,
                 flipX: false,
                 flipY: false,
@@ -1567,12 +1695,18 @@ export function EditorScreen({
               uri: outUri,
               thumbnailUri: outUri,
             };
+            cumulativeMusicOffsetMs += 10000; // Images are 10s by default
           } else {
+            const originalDuration = targetItem.durationMs || maxVideoDurationMs || 10000;
+            const safeEndMs = Math.min(edits.trimEnd, originalDuration);
+            const safeStartMs = Math.min(edits.trimStart, Math.max(0, safeEndMs - 100));
+            const isFullTrim = edits.trimStart === 0 && edits.trimEnd >= originalDuration;
+
             const outUri = await trimVideo(targetItem.uri, {
-              startMs: edits.trimStart,
-              endMs: edits.trimEnd,
+              startMs: safeStartMs,
+              endMs: safeEndMs,
               mute: edits.isMuted,
-              musicUri: selectedMusic?.url || undefined,
+              ...(selectedMusic?.url ? { musicUri: selectedMusic.url, musicOffsetMs: cumulativeMusicOffsetMs } : {}),
               ...opts,
             });
 
@@ -1590,6 +1724,7 @@ export function EditorScreen({
               thumbnailUri: newThumb ? newThumb : targetItem.thumbnailUri,
               durationMs: newDuration,
             };
+            cumulativeMusicOffsetMs += newDuration;
           }
         } else {
           if (selectedMusic) {
@@ -1598,6 +1733,7 @@ export function EditorScreen({
               outUri = await trimVideo(targetItem.uri, {
                 isImage: true,
                 musicUri: selectedMusic.url,
+                musicOffsetMs: cumulativeMusicOffsetMs,
                 rotateDegrees: 0,
                 flipX: false,
                 flipY: false,
@@ -1606,12 +1742,14 @@ export function EditorScreen({
                 saturation: 1,
                 grayscale: false,
               });
+              cumulativeMusicOffsetMs += 10000;
             } else {
+              const safeEndMs = targetItem.durationMs || 10000;
               outUri = await trimVideo(targetItem.uri, {
                 startMs: 0,
-                endMs: targetItem.durationMs || 10000,
+                endMs: safeEndMs,
                 mute: isMuted,
-                musicUri: selectedMusic.url,
+                ...(selectedMusic?.url ? { musicUri: selectedMusic.url, musicOffsetMs: cumulativeMusicOffsetMs } : {}),
                 rotateDegrees: 0,
                 flipX: false,
                 flipY: false,
@@ -1620,6 +1758,7 @@ export function EditorScreen({
                 saturation: 1,
                 grayscale: false,
               });
+              cumulativeMusicOffsetMs += safeEndMs;
             }
             updatedItems[i] = {
               ...targetItem,
@@ -2132,7 +2271,8 @@ export function EditorScreen({
                         {thumbnails.map((uri, idx) => (
                           <Image key={idx} source={{ uri }} style={styles.filmstripImage} />
                         ))}
-                        <View style={styles.timelineOverlay} />
+                        <View style={[styles.timelineOverlay, { left: 0, width: (trimStart / duration) * TIMELINE_WIDTH }]} />
+                        <View style={[styles.timelineOverlay, { left: (trimEnd / duration) * TIMELINE_WIDTH, right: 0 }]} />
                         <View
                           style={[
                             styles.selectionRange,
@@ -2146,7 +2286,6 @@ export function EditorScreen({
                           styles.customHandleLeft,
                           { left: (trimStart / duration) * TIMELINE_WIDTH - 16 }
                         ]}
-                        {...startPan.panHandlers}
                       >
                         <View style={styles.handleBarLine} />
                       </View>
@@ -2154,21 +2293,22 @@ export function EditorScreen({
                         style={[
                           styles.customHandle,
                           styles.customHandleRight,
-                          { left: (trimEnd / duration) * TIMELINE_WIDTH }
+                          { left: (trimEnd / duration) * TIMELINE_WIDTH - 16 }
                         ]}
-                        {...endPan.panHandlers}
                       >
                         <View style={styles.handleBarLine} />
                       </View>
                     </View>
 
                     {/* Sub-track 1: Add Audio */}
-                    <Pressable style={styles.subTrackRow} onPress={() => setShowMusicModal(true)}>
-                      <Text style={styles.subTrackIcon}>+</Text>
-                      <Text style={styles.subTrackText}>
-                        {selectedMusic ? `Audio: ${selectedMusic.title}` : 'Add audio'}
-                      </Text>
-                    </Pressable>
+                    {resolvedMusicList.length > 0 && (
+                      <Pressable style={styles.subTrackRow} onPress={() => setShowMusicModal(true)}>
+                        <Text style={styles.subTrackIcon}>+</Text>
+                        <Text style={styles.subTrackText}>
+                          {selectedMusic ? `Audio: ${selectedMusic.title}` : 'Add audio'}
+                        </Text>
+                      </Pressable>
+                    )}
 
                     {/* Sub-track 2: Add Text */}
                     <Pressable style={styles.subTrackRow} onPress={addTextOverlay}>
@@ -2309,12 +2449,14 @@ export function EditorScreen({
                   </View>
                   <Text style={styles.toolLabel}>Text</Text>
                 </Pressable>
-                <Pressable style={[styles.toolButton, showMusicModal && styles.toolButtonActive]} onPress={() => setShowMusicModal(true)}>
-                  <View style={styles.toolIconContainer}>
-                    <Ionicons name="musical-notes" size={22} color="#fff" />
-                  </View>
-                  <Text style={styles.toolLabel}>Audio</Text>
-                </Pressable>
+                {resolvedMusicList.length > 0 && (
+                  <Pressable style={[styles.toolButton, showMusicModal && styles.toolButtonActive]} onPress={() => setShowMusicModal(true)}>
+                    <View style={styles.toolIconContainer}>
+                      <Ionicons name="musical-notes" size={22} color="#fff" />
+                    </View>
+                    <Text style={styles.toolLabel}>Audio</Text>
+                  </Pressable>
+                )}
                 <Pressable style={[styles.toolButton, panel === 'transform' && styles.toolButtonActive]} onPress={() => setPanel(panel === 'transform' ? 'trim' : 'transform')}>
                   <View style={styles.toolIconContainer}>
                     <Ionicons name="crop" size={22} color="#fff" />
@@ -2420,12 +2562,14 @@ export function EditorScreen({
             <View style={styles.fullscreenBottomContainer}>
               {/* Bottom Toolbar */}
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.toolButtonsRow, { flexGrow: 1 }]}>
-                <Pressable style={[styles.toolButton, showMusicModal && styles.toolButtonActive]} onPress={() => setShowMusicModal(true)}>
-                  <View style={styles.toolIconContainer}>
-                    <Ionicons name="musical-notes" size={22} color="#fff" />
-                  </View>
-                  <Text style={styles.toolLabel}>Audio</Text>
-                </Pressable>
+                {resolvedMusicList.length > 0 && (
+                  <Pressable style={[styles.toolButton, showMusicModal && styles.toolButtonActive]} onPress={() => setShowMusicModal(true)}>
+                    <View style={styles.toolIconContainer}>
+                      <Ionicons name="musical-notes" size={22} color="#fff" />
+                    </View>
+                    <Text style={styles.toolLabel}>Audio</Text>
+                  </Pressable>
+                )}
                 <Pressable style={styles.toolButton} onPress={addTextOverlay}>
                   <View style={styles.toolIconContainer}>
                     <Ionicons name="text" size={22} color="#fff" />
@@ -2511,6 +2655,12 @@ export function EditorScreen({
                   activeIndex,
                 ]}
                 keyExtractor={(it) => it.id}
+                initialScrollIndex={activeIndex}
+                getItemLayout={(_, index) => ({
+                  length: SCREEN_WIDTH,
+                  offset: SCREEN_WIDTH * index,
+                  index,
+                })}
                 horizontal
                 pagingEnabled={false}
                 showsHorizontalScrollIndicator={false}
@@ -2590,7 +2740,7 @@ export function EditorScreen({
                   <View style={{ alignItems: 'center', marginBottom: 6 }}>
                     <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>
                       {(() => {
-                        const selMs = trimEnd - trimStart;
+                        const selMs = ((endX.current - startX.current) / TIMELINE_WIDTH) * duration;
                         const totalSec = Math.floor(selMs / 1000);
                         return totalSec >= 60
                           ? `${Math.floor(totalSec / 60)}:${(totalSec % 60).toString().padStart(2, '0')} selected`
@@ -2600,32 +2750,43 @@ export function EditorScreen({
                   </View>
                   <View style={[styles.trimTimelineBox, { overflow: 'visible' }]}>
                     <View style={styles.filmstrip}>
-                      {thumbnails.map((uri, idx) => (
-                        <Image key={idx} source={{ uri }} style={styles.filmstripImage} />
-                      ))}
-                      <View style={styles.timelineOverlay} />
+                      {thumbnails.length === 0 ? (
+                        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                          <ActivityIndicator color="#ffffff" size="small" />
+                        </View>
+                      ) : (
+                        thumbnails.map((uri, idx) => (
+                          <Image key={idx} source={{ uri }} style={styles.filmstripImage} />
+                        ))
+                      )}
+                      <View ref={leftOverlayRef} style={[styles.timelineOverlay, { left: 0, width: startX.current }]} />
+                      <View ref={rightOverlayRef} style={[styles.timelineOverlay, { left: endX.current, right: 0 }]} />
                       <View
+                        ref={selectionRangeRef}
                         style={[
                           styles.selectionRange,
-                          { left: (trimStart / duration) * TIMELINE_WIDTH, width: ((trimEnd - trimStart) / duration) * TIMELINE_WIDTH }
+                          { left: startX.current, width: endX.current - startX.current }
                         ]}
+                        {...middlePan.panHandlers}
                       />
                     </View>
                     <View
+                      ref={leftHandleRef}
                       style={[
                         styles.customHandle,
                         styles.customHandleLeft,
-                        { left: (trimStart / duration) * TIMELINE_WIDTH - 16 }
+                        { left: startX.current - 16 }
                       ]}
                       {...startPan.panHandlers}
                     >
                       <View style={styles.handleBarLine} />
                     </View>
                     <View
+                      ref={rightHandleRef}
                       style={[
                         styles.customHandle,
                         styles.customHandleRight,
-                        { left: (trimEnd / duration) * TIMELINE_WIDTH }
+                        { left: endX.current - 16 }
                       ]}
                       {...endPan.panHandlers}
                     >
@@ -2810,12 +2971,14 @@ export function EditorScreen({
             {/* Tools row and bottom navigation controls */}
             <View style={styles.bottomToolBarContainer}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.toolButtonsRow, { flexGrow: 1 }]}>
-                <Pressable style={[styles.toolButton, showMusicModal && styles.toolButtonActive]} onPress={() => setShowMusicModal(true)}>
-                  <View style={styles.toolIconContainer}>
-                    <Ionicons name="musical-notes" size={22} color="#fff" />
-                  </View>
-                  <Text style={styles.toolLabel}>Audio</Text>
-                </Pressable>
+                {resolvedMusicList.length > 0 && (
+                  <Pressable style={[styles.toolButton, showMusicModal && styles.toolButtonActive]} onPress={() => setShowMusicModal(true)}>
+                    <View style={styles.toolIconContainer}>
+                      <Ionicons name="musical-notes" size={22} color="#fff" />
+                    </View>
+                    <Text style={styles.toolLabel}>Audio</Text>
+                  </Pressable>
+                )}
                 <Pressable style={[styles.toolButton, panel === 'text' && styles.toolButtonActive]} onPress={() => setPanel('text')}>
                   <View style={styles.toolIconContainer}>
                     <Ionicons name="text" size={22} color="#fff" />
@@ -3008,6 +3171,7 @@ export function EditorScreen({
                   onPress={() => {
                     setSelectedMusic(null);
                     setMusicPaused(true);
+                    setIsMuted(false);
                   }}
                   style={styles.musicFooterRemoveBtn}
                 >
@@ -3651,7 +3815,9 @@ const styles = StyleSheet.create({
   },
   filmstripImage: { width: TIMELINE_WIDTH / 10, height: 60 },
   timelineOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.6)',
   },
   selectionRange: {
@@ -3661,7 +3827,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     borderTopWidth: 2,
     borderBottomWidth: 2,
-    borderColor: '#fff',
+    borderColor: '#FFD60A',
   },
   handle: {
     position: 'absolute',
@@ -3684,7 +3850,7 @@ const styles = StyleSheet.create({
     top: 0,
     width: 16,
     height: 60,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#FFD60A',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 20,

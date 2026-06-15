@@ -44,11 +44,17 @@ Ensure the following keys are added to your `Info.plist`:
 <string>We need access to your microphone to record audio for videos.</string>
 <key>NSPhotoLibraryUsageDescription</key>
 <string>We need access to your photo library to pick and save media files.</string>
+<key>UIAppFonts</key>
+<array>
+  <string>Ionicons.ttf</string>
+</array>
 ```
 
 #### Android Installation
-Make sure to add the FFmpeg kit dependency in your app's `android/app/build.gradle`:
+Make sure to add the FFmpeg kit dependency in your app's `android/app/build.gradle`. You will also need to link the fonts from `react-native-vector-icons`:
 ```groovy
+apply from: "../../node_modules/react-native-vector-icons/fonts.gradle"
+
 dependencies {
     implementation("io.github.maitrungduc1410:ffmpeg-kit-min:6.0.1")
 }
@@ -92,6 +98,9 @@ export default function App() {
           headerTitle="Create New Post"
           cameraModes={['POST', 'STORY', 'REEL']}
           defaultCameraMode="REEL"
+          mediaType="any"
+          mediaTabs={['GALLERY', 'PHOTO', 'VIDEO']}
+          maxVideoDurationMs={30000} // Force trim videos longer than 30s
           onCancelPress={() => setEditorVisible(false)}
           onFinishExport={(editedMedia, paths, editedArray, cameraMode) => {
             console.log('Export completed successfully!');
@@ -126,6 +135,11 @@ const styles = StyleSheet.create({
 | `cameraModes` | `Array<'POST' \| 'STORY' \| 'REEL'>` | `['POST', 'STORY', 'REEL']` | Active shooting modes allowed. |
 | `defaultCameraMode` | `'POST' \| 'STORY' \| 'REEL'` | `"REEL"` | Initial shooting mode when opening. |
 | `musicList` | `MusicTrack[]` | `[]` | List of audio tracks available to overlay on videos. |
+| `maxSelection` | `number` | `1` | Maximum number of media items user can select. Max allowed is 5. |
+| `aspectRatio` | `'1:1' \| '4:3' \| '4:5' \| '16:9' \| '9:16' \| 'free'` | `'free'` | Enforce a fixed aspect ratio for image/video preview. |
+| `mediaType` | `'photo' \| 'video' \| 'any'` | `'any'` | Filter the library to only show photos, videos, or both. |
+| `mediaTabs` | `Array<'GALLERY' \| 'PHOTO' \| 'VIDEO'>` | `['GALLERY', 'PHOTO', 'VIDEO']` | Control which selection tabs are visible at the bottom of the picker screen. Defaults to the first array item. |
+| `maxVideoDurationMs` | `number` | `undefined` | Maximum video duration allowed in milliseconds. If a video exceeds this, the trim editor will automatically force the user to trim. |
 | `onCancelPress` | `() => void` | `undefined` | Callback fired when user cancels or leaves the editor. |
 | `onFinishExport` | `(editedMedia: any, paths: string[], editedArray: any[], cameraMode: string) => void` | `undefined` | Fired when edits finish exporting. Fills `paths` with target video/image file URIs. |
 

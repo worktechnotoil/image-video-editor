@@ -26,11 +26,6 @@ class MediaLibraryModule(private val reactContext: ReactApplicationContext) :
 
   @ReactMethod
   fun requestAccess(promise: Promise) {
-    val activity = getCurrentActivity()
-    if (activity == null) {
-      promise.resolve(false)
-      return
-    }
     val permissions = if (android.os.Build.VERSION.SDK_INT >= 33) {
       arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
     } else {
@@ -43,6 +38,13 @@ class MediaLibraryModule(private val reactContext: ReactApplicationContext) :
       promise.resolve(true)
       return
     }
+
+    val activity = getCurrentActivity()
+    if (activity == null) {
+      promise.resolve(false)
+      return
+    }
+
     if (activity is com.facebook.react.modules.core.PermissionAwareActivity) {
       activity.requestPermissions(permissions, 4422,
         com.facebook.react.modules.core.PermissionListener { _: Int, _: Array<String>, grantResults: IntArray ->
@@ -82,7 +84,7 @@ class MediaLibraryModule(private val reactContext: ReactApplicationContext) :
         while (cursor.moveToNext()) {
           val id = cursor.getString(idCol)
           val name = cursor.getString(nameCol) ?: "Unknown"
-          if (!seenIds.contains(id)) {
+          if (id != null && !seenIds.contains(id)) {
             val map = Arguments.createMap()
             map.putString("id", id)
             map.putString("title", name)
@@ -143,12 +145,24 @@ class MediaLibraryModule(private val reactContext: ReactApplicationContext) :
           }
           val id = cursor.getLong(idCol)
           val mediaType = cursor.getInt(typeCol)
-          val duration = cursor.getLong(durationCol)
+          var duration = cursor.getLong(durationCol)
 
           val uri = if (mediaType == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO) {
             ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
           } else {
             ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
+          }
+
+          if (mediaType == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO && duration <= 0) {
+            try {
+              val retriever = android.media.MediaMetadataRetriever()
+              retriever.setDataSource(reactContext, uri)
+              val durStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+              if (durStr != null) {
+                duration = durStr.toLong()
+              }
+              retriever.release()
+            } catch (e: Exception) {}
           }
 
           val thumbUri = if (mediaType == MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO) {
@@ -202,42 +216,44 @@ class MediaLibraryModule(private val reactContext: ReactApplicationContext) :
 
   @ReactMethod
   fun exportAsset(localId: String, promise: Promise) {
-    try {
-      val id = localId.toLong()
-      val resolver = reactContext.contentResolver
-      var uri: Uri? = null
+    Thread {
+      try {
+        val id = localId.toLong()
+        val resolver = reactContext.contentResolver
+        var uri: Uri? = null
 
-      // Check if it is a video first
-      val videoUri = ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
-      var cursor = resolver.query(videoUri, arrayOf(MediaStore.Video.Media._ID), null, null, null)
-      if (cursor != null) {
-        if (cursor.moveToFirst()) {
-          uri = videoUri
-        }
-        cursor.close()
-      }
-
-      // If not a video, check if it's an image
-      if (uri == null) {
-        val imageUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
-        cursor = resolver.query(imageUri, arrayOf(MediaStore.Images.Media._ID), null, null, null)
+        // Check if it is a video first
+        val videoUri = ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
+        var cursor = resolver.query(videoUri, arrayOf(MediaStore.Video.Media._ID), null, null, null)
         if (cursor != null) {
           if (cursor.moveToFirst()) {
-            uri = imageUri
+            uri = videoUri
           }
           cursor.close()
         }
-      }
 
-      if (uri != null) {
-        val cacheFile = MediaFileUtils.copyToCache(reactContext, uri, "export")
-        promise.resolve(Uri.fromFile(cacheFile).toString())
-      } else {
-        promise.reject("not_found", "Asset not found in Video or Image MediaStore")
+        // If not a video, check if it's an image
+        if (uri == null) {
+          val imageUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
+          cursor = resolver.query(imageUri, arrayOf(MediaStore.Images.Media._ID), null, null, null)
+          if (cursor != null) {
+            if (cursor.moveToFirst()) {
+              uri = imageUri
+            }
+            cursor.close()
+          }
+        }
+
+        if (uri != null) {
+          val cacheFile = MediaFileUtils.copyToCache(reactContext, uri, "export")
+          promise.resolve(Uri.fromFile(cacheFile).toString())
+        } else {
+          promise.reject("not_found", "Asset not found in Video or Image MediaStore")
+        }
+      } catch (e: Exception) {
+        promise.reject("export_failed", e.message, e)
       }
-    } catch (e: Exception) {
-      promise.reject("export_failed", e.message, e)
-    }
+    }.start()
   }
 
   @ReactMethod

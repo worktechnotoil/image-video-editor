@@ -139,11 +139,26 @@ RCT_REMAP_METHOD(editImage,
 
   // 3. Apply Frame after crop
   NSString *frameKey = options[@"frame"];
+  NSString *frameUriString = options[@"frameUri"];
   BOOL frameApplied = NO;
-  if ([frameKey isKindOfClass:NSString.class] && frameKey.length > 0) {
-      // Bulletproof frame loading:
-      // 1. Try Assets Catalog / Flat Bundle
-      UIImage *uiFrame = [UIImage imageNamed:frameKey];
+  if (([frameKey isKindOfClass:NSString.class] && frameKey.length > 0) || ([frameUriString isKindOfClass:NSString.class] && frameUriString.length > 0)) {
+      UIImage *uiFrame = nil;
+      
+      if ([frameUriString isKindOfClass:NSString.class] && frameUriString.length > 0) {
+          NSURL *furl = [NSURL URLWithString:frameUriString];
+          if ([furl.scheme isEqualToString:@"http"] || [furl.scheme isEqualToString:@"https"]) {
+              furl = [self downloadToCache:furl];
+          } else if ([furl.scheme isEqualToString:@"file"]) {
+              furl = [self cleanURL:frameUriString];
+          }
+          if (furl) {
+              uiFrame = [UIImage imageWithData:[NSData dataWithContentsOfURL:furl]];
+          }
+      }
+      
+      if (!uiFrame && frameKey && frameKey.length > 0) {
+          uiFrame = [UIImage imageNamed:frameKey];
+      }
       
       // 2. Try various bundle paths
       if (!uiFrame) {
@@ -500,6 +515,7 @@ RCT_REMAP_METHOD(trimVideo,
   NSString *tintHex = options[@"tintColor"];
   NSNumber *tintOpacity = options[@"tintOpacity"];
   NSString *frameKey = options[@"frame"];
+  NSString *frameUriString = options[@"frameUri"];
 
   NSNumber *rotateDegrees = options[@"rotateDegrees"] ?: @0;
   BOOL flipX = [options[@"flipX"] boolValue];
@@ -507,9 +523,24 @@ RCT_REMAP_METHOD(trimVideo,
 
   // Prepare Frame before block to avoid reloading it 30-60 times a second
   CIImage *capturedFrameImg = nil;
-  if (frameKey && frameKey.length > 0) {
-      // Bulletproof frame loading (same as editImage)
-      UIImage *uiFrame = [UIImage imageNamed:frameKey];
+  if (([frameKey isKindOfClass:NSString.class] && frameKey.length > 0) || ([frameUriString isKindOfClass:NSString.class] && frameUriString.length > 0)) {
+      UIImage *uiFrame = nil;
+      
+      if ([frameUriString isKindOfClass:NSString.class] && frameUriString.length > 0) {
+          NSURL *furl = [NSURL URLWithString:frameUriString];
+          if ([furl.scheme isEqualToString:@"http"] || [furl.scheme isEqualToString:@"https"]) {
+              furl = [self downloadToCache:furl];
+          } else if ([furl.scheme isEqualToString:@"file"]) {
+              furl = [self cleanURL:frameUriString];
+          }
+          if (furl) {
+              uiFrame = [UIImage imageWithData:[NSData dataWithContentsOfURL:furl]];
+          }
+      }
+      
+      if (!uiFrame && frameKey && frameKey.length > 0) {
+          uiFrame = [UIImage imageNamed:frameKey];
+      }
       if (!uiFrame) {
           NSArray *searchPaths = @[
               [[NSBundle mainBundle] pathForResource:frameKey ofType:@"png" inDirectory:@"frames"],

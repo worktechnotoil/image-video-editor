@@ -9,26 +9,12 @@ import com.facebook.react.uimanager.ThemedReactContext
 import com.facebook.react.uimanager.annotations.ReactProp
 import com.facebook.react.uimanager.events.RCTEventEmitter
 
-class RNVideoViewSubclass(context: android.content.Context) : VideoView(context) {
-    var resizeMode: String = "cover"
-    var videoW: Int = 0
-    var videoH: Int = 0
+import android.view.TextureView
+import android.graphics.SurfaceTexture
+import android.view.Surface
 
-    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val width = MeasureSpec.getSize(widthMeasureSpec)
-        val height = MeasureSpec.getSize(heightMeasureSpec)
-        setMeasuredDimension(width, height)
-    }
-}
-
-class VideoProgressEvent(surfaceId: Int, viewTag: Int, private val name: String, private val eventData: com.facebook.react.bridge.WritableMap) :
-    com.facebook.react.uimanager.events.Event<VideoProgressEvent>(surfaceId, viewTag) {
-    override fun getEventName(): String = name
-    override fun getEventData(): com.facebook.react.bridge.WritableMap? = eventData
-}
-
-class RNVideoView(context: android.content.Context) : FrameLayout(context) {
-    val videoView = RNVideoViewSubclass(context)
+class RNVideoView(context: android.content.Context) : FrameLayout(context), TextureView.SurfaceTextureListener {
+    val textureView = TextureView(context)
     var uri: String? = null
     var isPaused: Boolean = false
     var isMuted: Boolean = true
@@ -37,24 +23,27 @@ class RNVideoView(context: android.content.Context) : FrameLayout(context) {
     var trimEndMs: Int = 0
     var lastEmittedTime: Int = -1
     var isSeeking: Boolean = false
+    var resizeMode: String = "cover"
+    var videoW: Int = 0
+    var videoH: Int = 0
+    var mSurface: Surface? = null
 
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
     private val checkProgressRunnable = object : Runnable {
         override fun run() {
             try {
-                android.util.Log.d("RNVideoPreview", "runnable tick: isPlaying = ${videoView.isPlaying}")
-                if (videoView.isPlaying) {
-                    val current = videoView.currentPosition
+                if (mediaPlayer?.isPlaying == true) {
+                    val current = mediaPlayer!!.currentPosition
                     if (trimEndMs > 0 && current >= trimEndMs) {
                         if (!isSeeking) {
                             isSeeking = true
-                            videoView.seekTo(trimStartMs)
+                            mediaPlayer!!.seekTo(trimStartMs)
                         }
                     } else if (current < trimStartMs) {
                         if (!isSeeking) {
                             isSeeking = true
-                            videoView.seekTo(trimStartMs)
+                            mediaPlayer!!.seekTo(trimStartMs)
                         }
                     } else {
                         isSeeking = false
@@ -62,49 +51,32 @@ class RNVideoView(context: android.content.Context) : FrameLayout(context) {
 
                     if (id != android.view.View.NO_ID && current != lastEmittedTime) {
                         lastEmittedTime = current
-                        android.util.Log.d("RNVideoPreview", "Emitting progress: $current, tag: $id")
                         val event = com.facebook.react.bridge.Arguments.createMap().apply {
                             putInt("currentTimeMs", current)
                         }
                         val reactContext = context as? com.facebook.react.bridge.ReactContext
                         if (reactContext != null) {
-                            try {
-                                val surfaceId = com.facebook.react.uimanager.UIManagerHelper.getSurfaceId(reactContext)
-                                val eventDispatcher = com.facebook.react.uimanager.UIManagerHelper.getEventDispatcherForReactTag(reactContext, id)
-                                if (eventDispatcher != null) {
-                                    eventDispatcher.dispatchEvent(VideoProgressEvent(surfaceId, id, "topChange", event))
-                                } else {
-                                    reactContext.getJSModule(com.facebook.react.uimanager.events.RCTEventEmitter::class.java)
-                                        ?.receiveEvent(id, "topChange", event)
-                                }
-                            } catch (e: Exception) {
                                 try {
                                     reactContext.getJSModule(com.facebook.react.uimanager.events.RCTEventEmitter::class.java)
                                         ?.receiveEvent(id, "topChange", event)
-                                } catch (e2: Exception) {
-                                    // ignore
-                                }
-                            }
+                                } catch (e: Exception) {}
                         }
                     }
                 }
-            } catch (e: Exception) {
-                // ignore
-            }
+            } catch (e: Exception) {}
             mainHandler.postDelayed(this, 100)
         }
     }
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
-        android.util.Log.d("RNVideoPreview", "onAttachedToWindow called! tag: $id")
         mainHandler.post(checkProgressRunnable)
     }
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
-        android.util.Log.d("RNVideoPreview", "onDetachedFromWindow called! tag: $id")
         mainHandler.removeCallbacks(checkProgressRunnable)
+        releasePlayer()
     }
 
     private val mLayoutRunnable = Runnable {
@@ -126,9 +98,6 @@ class RNVideoView(context: android.content.Context) : FrameLayout(context) {
         val parentWidth = measuredWidth
         val parentHeight = measuredHeight
         
-        val videoW = videoView.videoW
-        val videoH = videoView.videoH
-        
         if (videoW > 0 && videoH > 0 && parentWidth > 0 && parentHeight > 0) {
             val videoAspect = videoW.toFloat() / videoH.toFloat()
             val parentAspect = parentWidth.toFloat() / parentHeight.toFloat()
@@ -136,7 +105,7 @@ class RNVideoView(context: android.content.Context) : FrameLayout(context) {
             var childWidth = parentWidth
             var childHeight = parentHeight
             
-            if (videoView.resizeMode == "contain") {
+            if (resizeMode == "contain") {
                 if (videoAspect > parentAspect) {
                     childHeight = (parentWidth / videoAspect).toInt()
                 } else {
@@ -152,12 +121,12 @@ class RNVideoView(context: android.content.Context) : FrameLayout(context) {
                 }
             }
             
-            videoView.measure(
+            textureView.measure(
                 MeasureSpec.makeMeasureSpec(childWidth, MeasureSpec.EXACTLY),
                 MeasureSpec.makeMeasureSpec(childHeight, MeasureSpec.EXACTLY)
             )
         } else {
-            videoView.measure(widthMeasureSpec, heightMeasureSpec)
+            textureView.measure(widthMeasureSpec, heightMeasureSpec)
         }
     }
 
@@ -165,49 +134,84 @@ class RNVideoView(context: android.content.Context) : FrameLayout(context) {
         val parentWidth = right - left
         val parentHeight = bottom - top
         
-        val childWidth = videoView.measuredWidth
-        val childHeight = videoView.measuredHeight
+        val childWidth = textureView.measuredWidth
+        val childHeight = textureView.measuredHeight
         
         val childLeft = (parentWidth - childWidth) / 2
         val childTop = (parentHeight - childHeight) / 2
         
-        videoView.layout(childLeft, childTop, childLeft + childWidth, childTop + childHeight)
+        textureView.layout(childLeft, childTop, childLeft + childWidth, childTop + childHeight)
     }
 
     init {
-        android.util.Log.d("RNVideoPreview", "RNVideoView init called! tag: $id")
         clipChildren = true
-        videoView.setZOrderMediaOverlay(false)
-        videoView.setOnPreparedListener { mp ->
-            mediaPlayer = mp
-            mp.isLooping = true
-            val volume = if (isMuted) 0f else 1f
-            mp.setVolume(volume, volume)
-            // Seek to trim start before playing
-            if (trimStartMs > 0) {
-                mp.seekTo(trimStartMs)
-            }
-            if (!isPaused) {
-                android.util.Log.d("RNVideoPreview", "onPrepared: starting playback, isPaused=$isPaused")
-                videoView.start()
-            } else {
-                android.util.Log.d("RNVideoPreview", "onPrepared: isPaused=true, not starting")
-            }
-            videoView.videoW = mp.videoWidth
-            videoView.videoH = mp.videoHeight
-            requestLayout()
-        }
-        videoView.setOnCompletionListener { mp ->
-            mp.seekTo(trimStartMs)
-            mp.start()
-        }
-        videoView.setOnErrorListener { mp, what, extra ->
-            android.util.Log.e("RNVideoPreview", "VideoView error: what=$what, extra=$extra")
-            true // Return true to prevent default "Can't play this video" dialog
-        }
-        
+        textureView.surfaceTextureListener = this
         val lp = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, android.view.Gravity.CENTER)
-        addView(videoView, lp)
+        addView(textureView, lp)
+    }
+
+    override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
+        mSurface = Surface(surface)
+        preparePlayer()
+    }
+
+    override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {}
+
+    override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
+        mSurface?.release()
+        mSurface = null
+        releasePlayer()
+        return true
+    }
+
+    override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
+
+    fun preparePlayer() {
+        if (uri.isNullOrEmpty() || mSurface == null) return
+        releasePlayer()
+        try {
+            mediaPlayer = android.media.MediaPlayer().apply {
+                setSurface(mSurface)
+                val parsedUri = Uri.parse(uri)
+                if (parsedUri.scheme == "file" || uri!!.startsWith("/")) {
+                    val path = parsedUri.path ?: if (uri!!.startsWith("file://")) uri!!.substring(7) else uri!!
+                    setDataSource(path)
+                } else {
+                    setDataSource(context, parsedUri)
+                }
+                isLooping = true
+                val volume = if (isMuted) 0f else 1f
+                setVolume(volume, volume)
+                
+                setOnPreparedListener { mp ->
+                    videoW = mp.videoWidth
+                    videoH = mp.videoHeight
+                    requestLayout()
+                    if (trimStartMs > 0) {
+                        mp.seekTo(trimStartMs)
+                    }
+                    if (!isPaused) {
+                        mp.start()
+                    }
+                }
+                setOnCompletionListener { mp ->
+                    mp.seekTo(trimStartMs)
+                    mp.start()
+                }
+                setOnErrorListener { _, _, _ -> true }
+                prepareAsync()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    fun releasePlayer() {
+        try {
+            mediaPlayer?.stop()
+            mediaPlayer?.release()
+        } catch (e: Exception) {}
+        mediaPlayer = null
     }
 
     fun updateVolume() {
@@ -242,44 +246,19 @@ class RNVideoPreviewManager(private val reactContext: ReactApplicationContext) :
     if (uri == view.uri) return
     view.uri = uri
     if (uri.isNullOrEmpty()) {
-      view.mediaPlayer = null
-      view.videoView.stopPlayback()
+      view.releasePlayer()
       return
     }
-    try {
-      view.mediaPlayer = null
-      val parsedUri = Uri.parse(uri)
-      if (parsedUri.scheme == "file" || uri.startsWith("/")) {
-        val path = parsedUri.path ?: if (uri.startsWith("file://")) uri.substring(7) else uri
-        view.videoView.setVideoPath(path)
-      } else {
-        view.videoView.setVideoURI(parsedUri)
-      }
-    } catch (e: Exception) {
-      e.printStackTrace()
-    }
+    view.preparePlayer()
   }
 
   @ReactProp(name = "paused")
   fun setPaused(view: RNVideoView, paused: Boolean) {
-    android.util.Log.d("RNVideoPreview", "setPaused: paused=$paused, mediaPlayer=${view.mediaPlayer}")
     view.isPaused = paused
     if (paused) {
-      try { view.videoView.pause() } catch (e: Exception) { /* ignore if not yet prepared */ }
+      try { view.mediaPlayer?.pause() } catch (e: Exception) {}
     } else {
-      // Only call start() if mediaPlayer is prepared (not null)
-      if (view.mediaPlayer != null) {
-        try {
-          if (!view.videoView.isPlaying) {
-            view.videoView.start()
-          }
-        } catch (e: Exception) {
-          android.util.Log.w("RNVideoPreview", "setPaused: start() failed: ${e.message}")
-        }
-      } else {
-        android.util.Log.d("RNVideoPreview", "setPaused: mediaPlayer null, will auto-start when prepared")
-        // isPaused is already false so onPrepared will call start()
-      }
+      try { view.mediaPlayer?.start() } catch (e: Exception) {}
     }
   }
 
@@ -291,15 +270,17 @@ class RNVideoPreviewManager(private val reactContext: ReactApplicationContext) :
 
   @ReactProp(name = "resizeMode")
   fun setResizeMode(view: RNVideoView, resizeMode: String?) {
-      view.videoView.resizeMode = resizeMode ?: "cover"
-      view.videoView.requestLayout()
+      view.resizeMode = resizeMode ?: "cover"
+      view.requestLayout()
   }
 
   @ReactProp(name = "trimStartMs")
   fun setTrimStartMs(view: RNVideoView, trimStartMs: Int) {
     view.trimStartMs = trimStartMs
-    if (view.videoView.currentPosition < trimStartMs) {
-      view.videoView.seekTo(trimStartMs)
+    view.mediaPlayer?.let {
+      if (it.currentPosition < trimStartMs) {
+        it.seekTo(trimStartMs)
+      }
     }
   }
 
@@ -311,7 +292,7 @@ class RNVideoPreviewManager(private val reactContext: ReactApplicationContext) :
   @ReactProp(name = "seekToMs")
   fun setSeekToMs(view: RNVideoView, seekToMs: Int) {
     if (seekToMs >= 0) {
-      view.videoView.seekTo(seekToMs)
+      view.mediaPlayer?.seekTo(seekToMs)
     }
   }
 }

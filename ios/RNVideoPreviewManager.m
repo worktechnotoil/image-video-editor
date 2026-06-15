@@ -31,6 +31,8 @@
     _seekToMs = -1;
     _isPlayerReady = NO;
 
+    self.clipsToBounds = YES;
+
     self.player = [[AVPlayer alloc] init];
     self.player.actionAtItemEnd = AVPlayerActionAtItemEndNone;
     self.playerLayer = [AVPlayerLayer playerLayerWithPlayer:self.player];

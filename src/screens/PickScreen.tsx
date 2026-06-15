@@ -12,6 +12,7 @@ import {
   StyleSheet,
   Text,
   View,
+  Dimensions,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import ImagePicker from 'react-native-image-crop-picker';
@@ -41,6 +42,7 @@ function formatDuration(ms?: number) {
 }
 
 export function PickScreen({
+  isActive = true,
   items,
   onPicked,
   onNext,
@@ -52,6 +54,8 @@ export function PickScreen({
   defaultCameraMode,
   maxSelection = 1,
   aspectRatio = 'free',
+  mediaType = 'any',
+  mediaTabs = ['GALLERY', 'PHOTO', 'VIDEO'],
 }: {
   items: MediaItem[];
   onPicked: (items: MediaItem[]) => void;
@@ -64,9 +68,12 @@ export function PickScreen({
   defaultCameraMode?: string;
   maxSelection?: number;
   aspectRatio?: '1:1' | '4:3' | '4:5' | '16:9' | '9:16' | 'free';
+  mediaType?: 'photo' | 'video' | 'any';
+  mediaTabs?: ('GALLERY' | 'PHOTO' | 'VIDEO')[];
+  isActive?: boolean;
 }) {
   const insets = useSafeAreaInsets();
-  const [tab, setTab] = useState<'GALLERY' | 'PHOTO' | 'VIDEO'>('GALLERY');
+  const [tab, setTab] = useState<'GALLERY' | 'PHOTO' | 'VIDEO'>(mediaTabs[0] || 'GALLERY');
   const [activeAlbum, setActiveAlbum] = useState<Album>({ id: 'all', title: 'Recents' });
   const [showAlbumPicker, setShowAlbumPicker] = useState(false);
   const [postType, setPostType] = useState<'POST' | 'STORY' | 'REEL'>('POST');
@@ -176,18 +183,21 @@ export function PickScreen({
 
   const loadMedia = async (albumId?: string) => {
     try {
+      console.log('loadMedia called with albumId:', albumId);
       setLoading(true);
       const assets = await listMedia({
         limit: 200,
         offset: 0,
-        type: 'all',
+        type: mediaType === 'photo' ? 'image' : mediaType === 'video' ? 'video' : 'all',
         albumId: albumId === 'all' ? undefined : albumId,
       });
+      console.log('loadMedia got assets:', assets.length);
       setLibrary(assets);
       if (assets[0] && !multiSelect) {
         setSelectedMedia(assets[0]);
       }
     } catch (err: any) {
+      console.error('loadMedia error:', err);
       Alert.alert('Library error', err?.message ?? 'Failed to load library.');
     } finally {
       setLoading(false);
@@ -195,9 +205,11 @@ export function PickScreen({
   };
 
   useEffect(() => {
+    console.log('PickScreen mounted!');
     (async () => {
       try {
         const ok = await requestMediaAccess();
+        console.log('requestMediaAccess ok?', ok);
         if (!ok) {
           Alert.alert('Permission needed', 'Allow photo access to continue.');
           return;
@@ -224,6 +236,20 @@ export function PickScreen({
     return [cameraItem, ...list];
   }, [library, tab]);
 
+  const listData = useMemo(() => {
+    const rows = Array.from({ length: Math.ceil(filtered.length / 4) }).map((_, i) => ({
+      id: `row_${i}`,
+      type: 'row',
+      items: filtered.slice(i * 4, i * 4 + 4),
+    }));
+
+    return [
+      { id: 'header_preview', type: 'preview' },
+      { id: 'header_albumRow', type: 'albumRow' },
+      ...rows
+    ];
+  }, [filtered]);
+
   useEffect(() => {
     let cancelled = false;
     setVideoPaused(false);
@@ -236,6 +262,7 @@ export function PickScreen({
         setPreviewUri(selectedMedia.uri);
         return;
       }
+      setPreviewUri(null);
       try {
         const fileUri = await exportAsset(selectedMedia.id);
         if (!cancelled) setPreviewUri(fileUri);
@@ -250,25 +277,36 @@ export function PickScreen({
 
   const playableUri = useMemo(() => {
     if (!selectedMedia) return null;
-    if (previewUri && !previewUri.startsWith('ph://') && !previewUri.startsWith('content://')) return previewUri;
-    if (selectedMedia.uri && !selectedMedia.uri.startsWith('ph://') && !selectedMedia.uri.startsWith('content://')) return selectedMedia.uri;
-    return null;
+    if (previewUri) return previewUri;
+    return selectedMedia.uri;
   }, [previewUri, selectedMedia]);
 
   const toggleMultiSelect = () => {
-    setMultiSelect((v) => !v);
-    setSelectedItems([]);
+    setMultiSelect((v) => {
+      if (!v && selectedMedia) {
+        setSelectedItems([selectedMedia]);
+      } else {
+        setSelectedItems([]);
+      }
+      return !v;
+    });
   };
 
   const handleSelectItem = (item: MediaItem) => {
-    setSelectedMedia(item);
     if (multiSelect) {
       setSelectedItems((prev) => {
         const exists = prev.find((i) => i.id === item.id);
-        if (exists) return prev.filter((i) => i.id !== item.id);
+        if (exists) {
+          const newItems = prev.filter((i) => i.id !== item.id);
+          setSelectedMedia(newItems.length > 0 ? newItems[newItems.length - 1] : null);
+          return newItems;
+        }
         if (prev.length >= maxSelection) return prev;
+        setSelectedMedia(item);
         return [...prev, item];
       });
+    } else {
+      setSelectedMedia(item);
     }
 
     Animated.sequence([
@@ -497,127 +535,167 @@ export function PickScreen({
         </View>
       </Modal>
 
-      <Animated.View
-        style={[
-          styles.preview,
-          { transform: [{ scale: scaleAnim }] },
-          isRatioLocked && previewAspectRatio
-            ? { height: undefined, aspectRatio: previewAspectRatio }
-            : {},
-        ]}
-      >
-        {selectedMedia?.type === 'video' ? (
-          <Pressable style={styles.previewImage} onPress={() => setVideoPaused((v) => !v)}>
-            {playableUri ? (
-              <VideoPreview
-                uri={playableUri}
-                paused={videoPaused}
-                muted={false}
-                style={styles.previewImage}
-                resizeMode="cover"
-              />
-            ) : (
-              <Image
-                source={{ uri: selectedMedia.thumbnailUri || selectedMedia.uri }}
-                style={styles.previewImage}
-                resizeMode="cover"
-              />
-            )}
-            <View style={styles.previewOverlay}>
-              <View style={styles.playPauseCircle}>
-                <Ionicons name={videoPaused ? 'play' : 'pause'} size={24} color="#fff" />
-              </View>
-            </View>
-          </Pressable>
-        ) : (
-          <Image
-            source={{ uri: previewUri ?? selectedMedia?.uri }}
-            style={[styles.previewImage, cropMode === '1:1' ? styles.squareCrop : styles.originalCrop]}
-            resizeMode={isRatioLocked ? 'cover' : (cropMode === '1:1' ? 'cover' : 'contain')}
-          />
-        )}
-
-        <View style={styles.previewControls}>
-          {/* Ratio lock badge */}
-          {isRatioLocked && (
-            <View style={styles.ratioBadge}>
-              <Text style={styles.ratioBadgeText}>{aspectRatio}</Text>
-            </View>
-          )}
-
-          {/* Crop toggle — hidden when ratio is locked */}
-          {!isRatioLocked && (
-            <Pressable
-              style={styles.cropToggle}
-              onPress={() => setCropMode((v) => (v === '1:1' ? 'original' : '1:1'))}
-            >
-              <Ionicons
-                name={cropMode === '1:1' ? 'square-outline' : 'expand-outline'}
-                size={20}
-                color="#fff"
-              />
-            </Pressable>
-          )}
-        </View>
-      </Animated.View>
-
-      <View style={styles.albumRow}>
-        <Pressable
-          style={styles.albumSelector}
-          onPress={() => setShowAlbumPicker((v) => !v)}
-        >
-          <Text style={styles.albumTitle}>{activeAlbum.title}</Text>
-          <Ionicons name="chevron-down" size={16} color="#fff" style={{ marginLeft: 6 }} />
-        </Pressable>
-
-        {/* Only show Select/Done button when maxSelection > 1 */}
-        {maxSelection > 1 && (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            {multiSelect && (
-              <Text style={{ color: '#3b82f6', fontSize: 12, fontWeight: '700' }}>
-                {selectedItems.length}/{maxSelection}
-              </Text>
-            )}
-            <Pressable
-              style={[
-                styles.multiSelectBtn,
-                multiSelect && styles.multiSelectBtnActive,
-                multiSelect && selectedItems.length === 0 && { opacity: 0.35 },
-              ]}
-              onPress={() => {
-                if (multiSelect) {
-                  handleNext();
-                } else {
-                  toggleMultiSelect();
-                }
-              }}
-              disabled={multiSelect && selectedItems.length === 0}
-            >
-              <Text style={[
-                styles.multiSelectText,
-                multiSelect && styles.multiSelectTextActive,
-              ]}>{multiSelect ? 'Done' : 'Select'}</Text>
-            </Pressable>
-          </View>
-        )}
-      </View>
-
       <FlatList
-        data={filtered}
+        data={listData}
+        extraData={{
+          selectedMedia,
+          previewUri,
+          playableUri,
+          videoPaused,
+          cropMode,
+          isRatioLocked,
+          activeAlbum,
+          multiSelect,
+          selectedItems,
+          showAlbumPicker,
+          loading
+        }}
         keyExtractor={(item) => item.id}
-        numColumns={4}
+        stickyHeaderIndices={[1]}
         style={styles.libraryList}
-        renderItem={renderThumb}
         contentContainerStyle={styles.grid}
+        getItemLayout={(data, index) => {
+          const previewHeight = isRatioLocked && previewAspectRatio 
+            ? Dimensions.get('window').width / previewAspectRatio 
+            : 420;
+          const albumRowHeight = 48;
+          const rowHeight = Dimensions.get('window').width / 4;
+          
+          if (index === 0) return { length: previewHeight, offset: 0, index };
+          if (index === 1) return { length: albumRowHeight, offset: previewHeight, index };
+          
+          const offset = previewHeight + albumRowHeight + (index - 2) * rowHeight;
+          return { length: rowHeight, offset, index };
+        }}
+        removeClippedSubviews={false}
+        windowSize={11}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={styles.emptyText}>{loading ? 'Loading…' : 'No media found'}</Text>
           </View>
         }
+        renderItem={({ item }) => {
+          if (item.type === 'preview') {
+            const previewStyleHeight = isRatioLocked && previewAspectRatio 
+              ? Dimensions.get('window').width / previewAspectRatio 
+              : 420;
+
+            return (
+              <Animated.View
+                style={[
+                  styles.preview,
+                  { transform: [{ scale: scaleAnim }], height: previewStyleHeight },
+                ]}
+              >
+                {selectedMedia?.type === 'video' ? (
+                  <Pressable style={styles.previewImage} onPress={() => setVideoPaused((v) => !v)}>
+                    {playableUri && isActive ? (
+                      <VideoPreview
+                        uri={playableUri}
+                        paused={videoPaused || !isActive}
+                        muted={false}
+                        style={styles.previewImage}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <Image
+                        source={{ uri: selectedMedia.thumbnailUri || selectedMedia.uri }}
+                        style={styles.previewImage}
+                        resizeMode="cover"
+                      />
+                    )}
+                    <View style={styles.previewOverlay}>
+                      <View style={styles.playPauseCircle}>
+                        <Ionicons name={videoPaused ? 'play' : 'pause'} size={24} color="#fff" />
+                      </View>
+                    </View>
+                  </Pressable>
+                ) : (
+                  <Image
+                    source={{ uri: previewUri ?? selectedMedia?.uri }}
+                    style={[styles.previewImage, cropMode === '1:1' ? styles.squareCrop : styles.originalCrop]}
+                    resizeMode={isRatioLocked ? 'cover' : (cropMode === '1:1' ? 'cover' : 'contain')}
+                  />
+                )}
+
+                <View style={styles.previewControls}>
+                  {isRatioLocked && (
+                    <View style={styles.ratioBadge}>
+                      <Text style={styles.ratioBadgeText}>{aspectRatio}</Text>
+                    </View>
+                  )}
+
+                  {!isRatioLocked && (
+                    <Pressable
+                      style={styles.cropToggle}
+                      onPress={() => setCropMode((v) => (v === '1:1' ? 'original' : '1:1'))}
+                    >
+                      <Ionicons
+                        name={cropMode === '1:1' ? 'square-outline' : 'expand-outline'}
+                        size={20}
+                        color="#fff"
+                      />
+                    </Pressable>
+                  )}
+                </View>
+              </Animated.View>
+            );
+          }
+
+          if (item.type === 'albumRow') {
+            return (
+              <View style={[styles.albumRow, { backgroundColor: '#0b0f1a', zIndex: 999, elevation: 5 }]}>
+                <Pressable
+                  style={styles.albumSelector}
+                  onPress={() => setShowAlbumPicker((v) => !v)}
+                >
+                  <Text style={styles.albumTitle}>{activeAlbum.title}</Text>
+                  <Ionicons name="chevron-down" size={16} color="#fff" style={{ marginLeft: 6 }} />
+                </Pressable>
+
+                {maxSelection > 1 && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    {multiSelect && (
+                      <Text style={{ color: '#3b82f6', fontSize: 12, fontWeight: '700' }}>
+                        {selectedItems.length}/{maxSelection}
+                      </Text>
+                    )}
+                    <Pressable
+                      style={[
+                        styles.multiSelectBtn,
+                        multiSelect && styles.multiSelectBtnActive,
+                        multiSelect && selectedItems.length === 0 && { opacity: 0.35 },
+                      ]}
+                      onPress={() => {
+                        if (multiSelect) {
+                          handleNext();
+                        } else {
+                          toggleMultiSelect();
+                        }
+                      }}
+                      disabled={multiSelect && selectedItems.length === 0}
+                    >
+                      <Text style={[
+                        styles.multiSelectText,
+                        multiSelect && styles.multiSelectTextActive,
+                      ]}>{multiSelect ? 'Done' : 'Select multiple'}</Text>
+                    </Pressable>
+                  </View>
+                )}
+              </View>
+            );
+          }
+
+          return (
+            <View style={{ flexDirection: 'row' }}>
+              {(item as any).items.map((mediaItem: any) => renderThumb({ item: mediaItem }))}
+            </View>
+          );
+        }}
       />
 
       <View style={styles.tabBar}>
-        {TABS.map((t) => (
+        {mediaTabs.filter(t => mediaType === 'any' || (mediaType === 'photo' && t !== 'VIDEO') || (mediaType === 'video' && t !== 'PHOTO')).map((t) => (
           <Pressable key={t} onPress={() => setTab(t)}>
             <Text style={[styles.tab, tab === t && styles.tabActive]}>{t}</Text>
           </Pressable>
@@ -876,7 +954,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    height: 48,
   },
   albumSelector: { flexDirection: 'row', alignItems: 'center' },
   albumTitle: { fontSize: 16, fontWeight: '700', color: '#fff' },

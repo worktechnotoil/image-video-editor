@@ -38,11 +38,11 @@ class MediaEditorModule(private val reactContext: ReactApplicationContext) :
     return uri
   }
 
-  private fun downloadToCache(urlString: String): File {
+  private fun downloadToCache(urlString: String, prefix: String = "music_", ext: String = ".mp3"): File {
     val url = java.net.URL(urlString)
     val connection = url.openConnection()
     connection.connect()
-    val cacheFile = File.createTempFile("music_", ".mp3", reactContext.cacheDir)
+    val cacheFile = File.createTempFile(prefix, ext, reactContext.cacheDir)
     url.openStream().use { input ->
       FileOutputStream(cacheFile).use { output ->
         input.copyTo(output)
@@ -158,18 +158,27 @@ class MediaEditorModule(private val reactContext: ReactApplicationContext) :
       // Frame drawing
       if (hasFrame) {
         try {
-          val assetManager = reactContext.assets
-          val inputStream = assetManager.open("frames/$rawFrameKey.png")
-          val frameBitmap = BitmapFactory.decodeStream(inputStream)
-          inputStream.close()
+          val frameUriString = if (options.hasKey("frameUri")) options.getString("frameUri") else null
+          var frameFile: File? = null
+          if (!frameUriString.isNullOrEmpty()) {
+            frameFile = if (frameUriString.startsWith("http://") || frameUriString.startsWith("https://")) {
+              downloadToCache(frameUriString, "frame_", ".png")
+            } else {
+              MediaFileUtils.copyToCache(reactContext, Uri.parse(frameUriString), "frame_")
+            }
+          }
           
-          if (frameBitmap != null) {
-            android.util.Log.d("RNMediaEditor", "Frame loaded: $rawFrameKey  ${frameBitmap.width}x${frameBitmap.height}")
-            val destRect = Rect(0, 0, baseImage.width, baseImage.height)
-            baseCanvas.drawBitmap(frameBitmap, null, destRect, null)
-            frameBitmap.recycle()
-          } else {
-            android.util.Log.w("RNMediaEditor", "Frame bitmap decode returned null for: $rawFrameKey")
+          if (frameFile != null) {
+            val frameBitmap = BitmapFactory.decodeFile(frameFile.absolutePath)
+            if (frameBitmap != null) {
+              android.util.Log.d("RNMediaEditor", "Frame loaded: $rawFrameKey  ${frameBitmap.width}x${frameBitmap.height}")
+              val destRect = Rect(0, 0, baseImage.width, baseImage.height)
+              baseCanvas.drawBitmap(frameBitmap, null, destRect, null)
+              frameBitmap.recycle()
+            } else {
+              android.util.Log.w("RNMediaEditor", "Frame bitmap decode returned null for: $rawFrameKey")
+            }
+            try { if (frameFile.exists()) frameFile.delete() } catch (_: Exception) {}
           }
         } catch (e: Exception) {
           android.util.Log.e("RNMediaEditor", "Frame load FAILED for: $rawFrameKey — ${e.message}", e)
@@ -322,14 +331,18 @@ class MediaEditorModule(private val reactContext: ReactApplicationContext) :
       if (!editedDir.exists()) editedDir.mkdirs()
       val outFile = File.createTempFile("edited_video_", ".mp4", editedDir)
 
-      // Copy frame png from assets into a real file for ffmpeg input
+      // Download/copy frame png from uri
       var frameFile: File? = null
-      if (hasFrame) {
-        frameFile = File(reactContext.cacheDir, "frame_${frameKey}_${System.currentTimeMillis()}.png")
-        reactContext.assets.open("frames/${frameKey}.png").use { input ->
-          FileOutputStream(frameFile).use { output ->
-            input.copyTo(output)
+      val frameUriString = if (options.hasKey("frameUri")) options.getString("frameUri") else null
+      if (hasFrame && !frameUriString.isNullOrEmpty()) {
+        try {
+          frameFile = if (frameUriString!!.startsWith("http://") || frameUriString.startsWith("https://")) {
+            downloadToCache(frameUriString, "frame_", ".png")
+          } else {
+            MediaFileUtils.copyToCache(reactContext, Uri.parse(frameUriString), "frame_")
           }
+        } catch (e: Exception) {
+          android.util.Log.e("RNMediaEditor", "Failed to get frame file: ${e.message}")
         }
       }
 
@@ -338,7 +351,7 @@ class MediaEditorModule(private val reactContext: ReactApplicationContext) :
       if (hasMusic) {
         try {
           musicFile = if (musicUri!!.startsWith("http://") || musicUri.startsWith("https://")) {
-            downloadToCache(musicUri)
+            downloadToCache(musicUri, "music_", ".mp3")
           } else {
             MediaFileUtils.copyToCache(reactContext, Uri.parse(musicUri), "music")
           }
@@ -429,10 +442,14 @@ class MediaEditorModule(private val reactContext: ReactApplicationContext) :
         }
       }
 
+      val hasVisualFilters = filterSteps.isNotEmpty() || isImage
+
       // Final output label assignment - ensure even dimensions for the encoder
-      if (currentLabel != "[vout]") {
-        filterSteps.add("${currentLabel}scale=trunc(iw/2)*2:trunc(ih/2)*2[vout]")
-        currentLabel = "[vout]"
+      if (hasVisualFilters) {
+        if (currentLabel != "[vout]") {
+          filterSteps.add("${currentLabel}scale=trunc(iw/2)*2:trunc(ih/2)*2[vout]")
+          currentLabel = "[vout]"
+        }
       }
 
       // Audio configuration
@@ -450,6 +467,8 @@ class MediaEditorModule(private val reactContext: ReactApplicationContext) :
       }
 
       val musicInputIndex = if (hasFrame) 2 else 1
+
+      val musicOffsetMs = if (options.hasKey("musicOffsetMs")) options.getDouble("musicOffsetMs") else 0.0
 
       val audioArgsList = if (hasMusic && musicFile != null) {
         if (hasVideoAudio && !mute) {
@@ -501,24 +520,45 @@ class MediaEditorModule(private val reactContext: ReactApplicationContext) :
       }
 
       if (hasMusic && musicFile != null) {
+        if (musicOffsetMs > 0) {
+          cmdList.add("-ss")
+          cmdList.add(f(musicOffsetMs / 1000.0))
+        }
         cmdList.add("-i")
         cmdList.add(musicFile.absolutePath)
       }
 
-      cmdList.add("-filter_complex")
-      cmdList.add(filterComplex)
-      cmdList.add("-map")
-      cmdList.add("[vout]")
+      if (filterComplex.isNotEmpty()) {
+        cmdList.add("-filter_complex")
+        cmdList.add(filterComplex)
+      }
+
+      if (hasVisualFilters) {
+        cmdList.add("-map")
+        cmdList.add("[vout]")
+      } else {
+        cmdList.add("-map")
+        cmdList.add("0:v")
+      }
+      
       cmdList.addAll(audioArgsList)
       
-      // Use h264_mediacodec for hardware acceleration on Android.
-      // This is efficient and works well with minimal builds.
-      cmdList.add("-c:v")
-      cmdList.add("h264_mediacodec")
-      cmdList.add("-b:v")
-      cmdList.add("5M")
-      cmdList.add("-pix_fmt")
-      cmdList.add("yuv420p") // Wide compatibility
+      // Force the output duration to match the intended trim duration exactly
+      cmdList.add("-t")
+      cmdList.add(ttString)
+      
+      if (hasVisualFilters) {
+        cmdList.add("-c:v")
+        cmdList.add("h264_mediacodec")
+        cmdList.add("-b:v")
+        cmdList.add("5M")
+        cmdList.add("-pix_fmt")
+        cmdList.add("yuv420p")
+      } else {
+        cmdList.add("-c:v")
+        cmdList.add("copy")
+      }
+      
       cmdList.add(outFile.absolutePath)
 
       val cmdArray = cmdList.toTypedArray()
