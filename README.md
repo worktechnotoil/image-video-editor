@@ -6,9 +6,9 @@ A high-performance, feature-rich React Native image and video editor. This libra
 * 📹 **Native Camera View**: High-performance thread-safe AVCaptureSession wrapper for iOS and custom camera on Android.
 * ✂️ **Video Trimming**: Seamless interactive trimming of video files.
 * 🖼️ **Custom Photo Frames**: Layer beautiful custom frames on top of images.
-* 🎵 **Audio Mixing**: Select and mix audio tracks onto video exports.
-* 🎨 **Real-time Filters**: High-performance shaders/filters for photo and video formats.
+* 🎵 **Audio Mixing & Carousel Sync**: Add background music tracks to your videos. Applies custom audio seamlessly across all videos in a multi-item carousel, automatically pausing original video sound.
 * 📦 **Modular Export**: Triggers callbacks with local filesystem URIs suitable for server uploads.
+* 📱 **Multi-Select & Swiping**: Select up to 5 items simultaneously and edit them smoothly via horizontal swiping. UI state and trimming configurations perfectly sync across items.
 
 ---
 
