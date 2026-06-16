@@ -442,12 +442,36 @@ class MediaEditorModule(private val reactContext: ReactApplicationContext) :
         }
       }
 
+      // 7. Text overlays
+      val overlays = if (options.hasKey("overlays")) options.getArray("overlays") else null
+      if (overlays != null && overlays.size() > 0) {
+        val fontPath = "/system/fonts/Roboto-Regular.ttf"
+        if (File(fontPath).exists()) {
+          val textFilters = mutableListOf<String>()
+          for (i in 0 until overlays.size()) {
+            val o = overlays.getMap(i)
+            val text = o.getString("text") ?: continue
+            val x = if (o.hasKey("x")) o.getDouble("x") else 0.0
+            val y = if (o.hasKey("y")) o.getDouble("y") else 0.0
+            val colorHex = if (o.hasKey("color")) o.getString("color") else "#FFFFFF"
+            val fontSize = if (o.hasKey("fontSize")) o.getDouble("fontSize") else 24.0
+            
+            val safeText = text.replace(":", "\\:").replace("'", "\\'")
+            textFilters.add("drawtext=text='${safeText}':fontfile=${fontPath}:x=${f(x)}:y=${f(y)}:fontsize=${f(fontSize)}:fontcolor=${colorHex}")
+          }
+          if (textFilters.isNotEmpty()) {
+            filterSteps.add("$currentLabel${textFilters.joinToString(",")}[v_text]")
+            currentLabel = "[v_text]"
+          }
+        }
+      }
+
       val hasVisualFilters = filterSteps.isNotEmpty() || isImage
 
-      // Final output label assignment - ensure even dimensions for the encoder
+      // Final output label assignment - ensure max resolution and even dimensions
       if (hasVisualFilters) {
         if (currentLabel != "[vout]") {
-          filterSteps.add("${currentLabel}scale=trunc(iw/2)*2:trunc(ih/2)*2[vout]")
+          filterSteps.add("${currentLabel}scale='min(1920,iw)':'min(1920,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2[vout]")
           currentLabel = "[vout]"
         }
       }
@@ -466,7 +490,7 @@ class MediaEditorModule(private val reactContext: ReactApplicationContext) :
         }
       }
 
-      val musicInputIndex = if (hasFrame) 2 else 1
+      val musicInputIndex = if (frameFile != null) 2 else 1
 
       val musicOffsetMs = if (options.hasKey("musicOffsetMs")) options.getDouble("musicOffsetMs") else 0.0
 
@@ -520,6 +544,8 @@ class MediaEditorModule(private val reactContext: ReactApplicationContext) :
       }
 
       if (hasMusic && musicFile != null) {
+        cmdList.add("-stream_loop")
+        cmdList.add("-1")
         if (musicOffsetMs > 0) {
           cmdList.add("-ss")
           cmdList.add(f(musicOffsetMs / 1000.0))

@@ -20,7 +20,7 @@ import { captureFrame } from '../native/FrameGrabber';
 import { saveToGallery } from '../native/MediaLibrary';
 import { VideoPreview } from '../native/VideoPreview';
 import Video from 'react-native-video';
-import Ionicons from 'react-native-vector-icons/Ionicons';
+import { Icon as Ionicons } from '../components/Icon';
 import type { ImageEditOptions, MediaItem, MusicTrack } from '../types';
 
 

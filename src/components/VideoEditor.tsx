@@ -7,9 +7,8 @@ import { EditorScreen } from '../screens/EditorScreen';
 import { ExportScreen } from '../screens/ExportScreen';
 import { exportAsset } from '../native/MediaLibrary';
 import type { MediaItem, MusicTrack } from '../types';
-import Ionicons from 'react-native-vector-icons/Ionicons';
+import { Icon as Ionicons } from './Icon';
 
-Ionicons.loadFont().catch(() => {});
 
 export interface VideoEditorProps {
   onClose?: () => void;

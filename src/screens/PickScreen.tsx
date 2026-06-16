@@ -14,7 +14,7 @@ import {
   View,
   Dimensions,
 } from 'react-native';
-import Ionicons from 'react-native-vector-icons/Ionicons';
+import { Icon as Ionicons } from '../components/Icon';
 import ImagePicker from 'react-native-image-crop-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CameraView, CameraViewRef } from '../native/CameraView';
