@@ -2586,7 +2586,7 @@ __metadata:
     "@react-native/metro-config": "npm:0.84.0"
     "@react-native/new-app-screen": "npm:0.84.0"
     "@react-native/typescript-config": "npm:0.84.0"
-    "@technotoil/image-video-editor": ../technotoil-image-video-editor-0.1.2.tgz
+    "@technotoil/image-video-editor": ../technotoil-image-video-editor-0.1.3.tgz
     "@types/jest": "npm:^29.5.13"
     "@types/react": "npm:^19.2.0"
     "@types/react-native-vector-icons": "npm:^6.4.18"
@@ -2605,9 +2605,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@technotoil/image-video-editor@file:../technotoil-image-video-editor-0.1.2.tgz::locator=%40technotoil%2Fimage-video-editor-example%40workspace%3Aexample":
-  version: 0.1.2
-  resolution: "@technotoil/image-video-editor@file:../technotoil-image-video-editor-0.1.2.tgz#../technotoil-image-video-editor-0.1.2.tgz::hash=fdaf3b&locator=%40technotoil%2Fimage-video-editor-example%40workspace%3Aexample"
+"@technotoil/image-video-editor@file:../technotoil-image-video-editor-0.1.3.tgz::locator=%40technotoil%2Fimage-video-editor-example%40workspace%3Aexample":
+  version: 0.1.3
+  resolution: "@technotoil/image-video-editor@file:../technotoil-image-video-editor-0.1.3.tgz#../technotoil-image-video-editor-0.1.3.tgz::hash=3bad8e&locator=%40technotoil%2Fimage-video-editor-example%40workspace%3Aexample"
   dependencies:
     react-native-fs: "npm:^2.20.0"
   peerDependencies:
@@ -2615,9 +2615,8 @@ __metadata:
     react-native: ">=0.70.0"
     react-native-image-crop-picker: ^0.51.1
     react-native-safe-area-context: ^5.5.2
-    react-native-vector-icons: ^10.3.0
     react-native-video: ">=6.0.0"
-  checksum: 10c0/3b4d0a84d5be2d12eea478f8fa4dbd2e089a41650783a712d3aec72e684d01aa4d78e1da801eaa8d09bf847f5ec9129eb6ea2e51bc2a5b0ab37559a014eb7b10
+  checksum: 10c0/225623f5aea51d1c98ad1ad0ade1fa6b02e1583ea95a33edcb986eb0d5991e09e4f97a4f8d0c678a6a3f8e1b28f8e02ae5d32d9009d02bc600d14bc7257945f9
   languageName: node
   linkType: hard
 
@@ -2628,7 +2627,6 @@ __metadata:
     "@babel/core": "npm:^7.25.2"
     "@react-native/babel-preset": "npm:0.84.0"
     "@types/react": "npm:^19.2.0"
-    "@types/react-native-vector-icons": "npm:^6.4.18"
     del-cli: "npm:^6.0.0"
     eslint: "npm:^9.35.0"
     react: "npm:19.2.3"
@@ -2637,7 +2635,6 @@ __metadata:
     react-native-fs: "npm:^2.20.0"
     react-native-image-crop-picker: "npm:^0.51.1"
     react-native-safe-area-context: "npm:^5.5.2"
-    react-native-vector-icons: "npm:^10.3.0"
     react-native-video: "npm:6.19.1"
     typescript: "npm:^5.9.2"
   peerDependencies:
@@ -2645,7 +2642,6 @@ __metadata:
     react-native: ">=0.70.0"
     react-native-image-crop-picker: ^0.51.1
     react-native-safe-area-context: ^5.5.2
-    react-native-vector-icons: ^10.3.0
     react-native-video: ">=6.0.0"
   languageName: unknown
   linkType: soft
