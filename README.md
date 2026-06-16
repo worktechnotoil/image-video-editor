@@ -25,7 +25,7 @@ npm install @technotoil/image-video-editor
 Ensure the peer dependencies are installed:
 
 ```bash
-yarn add react-native-image-crop-picker react-native-safe-area-context react-native-vector-icons react-native-video
+yarn add react-native-image-crop-picker react-native-safe-area-context react-native-video
 ```
 
 ### Native Setup
@@ -44,17 +44,11 @@ Ensure the following keys are added to your `Info.plist`:
 <string>We need access to your microphone to record audio for videos.</string>
 <key>NSPhotoLibraryUsageDescription</key>
 <string>We need access to your photo library to pick and save media files.</string>
-<key>UIAppFonts</key>
-<array>
-  <string>Ionicons.ttf</string>
-</array>
 ```
 
 #### Android Installation
-Make sure to add the FFmpeg kit dependency in your app's `android/app/build.gradle`. You will also need to link the fonts from `react-native-vector-icons`:
+Make sure to add the FFmpeg kit dependency in your app's `android/app/build.gradle`:
 ```groovy
-apply from: "../../node_modules/react-native-vector-icons/fonts.gradle"
-
 dependencies {
     implementation("io.github.maitrungduc1410:ffmpeg-kit-min:6.0.1")
 }
