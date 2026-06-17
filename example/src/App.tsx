@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, SafeAreaView, StatusBar, Image, ScrollView } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, SafeAreaView, StatusBar, Image, ScrollView, Modal, Pressable } from 'react-native';
+import Video from 'react-native-video';
 import { VideoEditor } from '@technotoil/image-video-editor';
 
 const DUMMY_MUSIC_LIST = [
@@ -36,6 +37,7 @@ export default function App() {
     cameraMode?: string;
     media: any[];
   } | null>(null);
+  const [previewItem, setPreviewItem] = useState<any>(null);
 
   const handleFinishExport = (editedMedia: any, paths: string[], editedArray: any[], cameraMode?: string) => {
     console.log('App.tsx - Export completed!');
@@ -117,20 +119,54 @@ export default function App() {
                 <Text style={styles.metaLabel}>Exported Assets Preview:</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.thumbScroll}>
                   {exportedResult.media.map((med, index) => (
-                    <View key={index} style={styles.thumbWrapper}>
+                    <TouchableOpacity key={index} style={styles.thumbWrapper} onPress={() => setPreviewItem(med)}>
                       <Image source={{ uri: med.uri }} style={styles.thumbImage} />
                       <View style={styles.typeBadge}>
                         <Text style={styles.typeBadgeText}>
                           {med.type?.toUpperCase() || 'MEDIA'}
                         </Text>
                       </View>
-                    </View>
+                    </TouchableOpacity>
                   ))}
                 </ScrollView>
               </View>
             )}
           </View>
         )}
+
+        <Modal visible={!!previewItem} transparent={true} animationType="fade" onRequestClose={() => setPreviewItem(null)}>
+          <View style={styles.modalOverlay}>
+            <Pressable style={styles.modalCloseBtn} onPress={() => setPreviewItem(null)}>
+              <Text style={styles.modalCloseText}>Close Preview</Text>
+            </Pressable>
+            
+            {previewItem && (
+              <View style={styles.modalContent}>
+                {previewItem.type === 'video' ? (
+                  <Video
+                    source={{ uri: previewItem.uri }}
+                    style={styles.fullPreviewMedia}
+                    controls={true}
+                    resizeMode="contain"
+                    repeat={true}
+                  />
+                ) : (
+                  <Image source={{ uri: previewItem.uri }} style={styles.fullPreviewMedia} resizeMode="contain" />
+                )}
+                <View style={styles.modalInfo}>
+                  <Text style={styles.modalInfoText}>Type: {previewItem.type}</Text>
+                  {previewItem.durationMs && (
+                    <Text style={styles.modalInfoText}>Duration: {(previewItem.durationMs / 1000).toFixed(2)}s</Text>
+                  )}
+                  {previewItem.width && previewItem.height && (
+                    <Text style={styles.modalInfoText}>Size: {previewItem.width}x{previewItem.height}</Text>
+                  )}
+                </View>
+              </View>
+            )}
+          </View>
+        </Modal>
+
       </ScrollView>
     </SafeAreaView>
   );
@@ -282,7 +318,50 @@ const styles = StyleSheet.create({
   },
   typeBadgeText: {
     color: '#fff',
-    fontSize: 8,
-    fontWeight: '700',
+    fontSize: 10,
+    fontWeight: 'bold',
   },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalCloseBtn: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    padding: 12,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 8,
+    zIndex: 10,
+  },
+  modalCloseText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  modalContent: {
+    width: '100%',
+    height: '80%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fullPreviewMedia: {
+    width: '100%',
+    flex: 1,
+  },
+  modalInfo: {
+    position: 'absolute',
+    bottom: 20,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  modalInfoText: {
+    color: '#fff',
+    fontSize: 14,
+    marginBottom: 4,
+  }
 });

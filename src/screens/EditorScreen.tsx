@@ -366,7 +366,7 @@ export function EditorScreen({
     };
 
     const frameConfig = (FRAME_CONFIGS as any)[edits.imageOptions.frame || ''] || { scale: 1, offsetY: 0 };
-    const renderScale = 1 / scale;
+    const renderScale = cropWidth / CARD_WIDTH;
 
     const hasCrop = edits.cropRatio !== null || edits.zoomScale > 1 || edits.cropOffset.x !== 0 || edits.cropOffset.y !== 0;
 
@@ -379,8 +379,8 @@ export function EditorScreen({
       frameOffsetY: edits.imageOptions.frame ? (frameConfig.offsetY || 0) : 0,
       overlays: edits.overlays.map((o: any) => ({
         text: o.text,
-        x: (o.x + 8) * renderScale,
-        y: (o.y + 8) * renderScale,
+        x: (o.x + 12) * renderScale,
+        y: (o.y + 12) * renderScale,
         color: o.color,
         fontSize: o.fontSize * renderScale,
       })),
@@ -1070,8 +1070,8 @@ export function EditorScreen({
 
     const frameConfig = (FRAME_CONFIGS as any)[imageOptions.frame || ''] || { scale: 1, offsetY: 0 };
 
-    // Scale factor to map screen points to actual image pixels
-    const renderScale = 1 / scale;
+    // Scale factor to map screen points to actual image pixels (UI width is CARD_WIDTH)
+    const renderScale = cropWidth / CARD_WIDTH;
 
     const hasCrop = cropRatio !== null || zoomScale > 1 || cropOffset.x !== 0 || cropOffset.y !== 0;
 
@@ -1084,9 +1084,9 @@ export function EditorScreen({
       frameOffsetY: imageOptions.frame ? (frameConfig.offsetY || 0) : 0,
       overlays: overlays.map(o => ({
         text: o.text,
-        // Add 8px padding to match the visual position in the container
-        x: (o.x + 8) * renderScale,
-        y: (o.y + 8) * renderScale,
+        // Add 12px padding to match the visual position in the container
+        x: (o.x + 12) * renderScale,
+        y: (o.y + 12) * renderScale,
         color: o.color,
         fontSize: o.fontSize * renderScale,
       })),
@@ -1600,8 +1600,24 @@ export function EditorScreen({
   };
 
   const adjustTrim = (deltaStartMs: number, deltaEndMs: number) => {
-    setTrimStart((prev) => Math.max(0, prev + deltaStartMs));
-    setTrimEnd((prev) => Math.max(trimStart + 500, prev + deltaEndMs));
+    setTrimStart((prevStart) => {
+      let newStart = Math.max(0, prevStart + deltaStartMs);
+      setTrimEnd((prevEnd) => {
+        let newEnd = Math.max(newStart + 500, prevEnd + deltaEndMs);
+        if (item.durationMs) {
+          newEnd = Math.min(newEnd, item.durationMs);
+        }
+        if (maxVideoDurationMs && newEnd - newStart > maxVideoDurationMs) {
+          if (deltaEndMs > 0) {
+            newEnd = newStart + maxVideoDurationMs;
+          } else if (deltaStartMs < 0) {
+            newStart = newEnd - maxVideoDurationMs;
+          }
+        }
+        return newEnd;
+      });
+      return newStart;
+    });
   };
 
   const handleDownload = async () => {
@@ -1625,8 +1641,13 @@ export function EditorScreen({
         }
       } else {
         const safeEndMs = Math.min(trimEnd, item.durationMs || 10000);
-        const safeStartMs = Math.min(trimStart, Math.max(0, safeEndMs - 100));
-        const isFullTrim = trimStart === 0 && trimEnd >= (item.durationMs || 10000);
+        let safeStartMs = Math.min(trimStart, Math.max(0, safeEndMs - 100));
+        
+        if (maxVideoDurationMs && safeEndMs - safeStartMs > maxVideoDurationMs) {
+          safeStartMs = safeEndMs - maxVideoDurationMs;
+        }
+        
+        const isFullTrim = safeStartMs === 0 && safeEndMs >= (item.durationMs || 10000);
         
         exportUri = await trimVideo(item.uri, {
           startMs: safeStartMs,
@@ -1698,10 +1719,15 @@ export function EditorScreen({
             };
             cumulativeMusicOffsetMs += 10000; // Images are 10s by default
           } else {
-            const originalDuration = targetItem.durationMs || maxVideoDurationMs || 10000;
+            const originalDuration = targetItem.durationMs || 10000;
             const safeEndMs = Math.min(edits.trimEnd, originalDuration);
-            const safeStartMs = Math.min(edits.trimStart, Math.max(0, safeEndMs - 100));
-            const isFullTrim = edits.trimStart === 0 && edits.trimEnd >= originalDuration;
+            let safeStartMs = Math.min(edits.trimStart, Math.max(0, safeEndMs - 100));
+            
+            if (maxVideoDurationMs && safeEndMs - safeStartMs > maxVideoDurationMs) {
+              safeStartMs = safeEndMs - maxVideoDurationMs;
+            }
+            
+            const isFullTrim = safeStartMs === 0 && safeEndMs >= originalDuration;
 
 
             const outUri = await trimVideo(targetItem.uri, {
