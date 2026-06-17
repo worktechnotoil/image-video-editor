@@ -2607,7 +2607,7 @@ __metadata:
 
 "@technotoil/image-video-editor@file:../technotoil-image-video-editor-0.1.7.tgz::locator=%40technotoil%2Fimage-video-editor-example%40workspace%3Aexample":
   version: 0.1.7
-  resolution: "@technotoil/image-video-editor@file:../technotoil-image-video-editor-0.1.7.tgz#../technotoil-image-video-editor-0.1.7.tgz::hash=b04a82&locator=%40technotoil%2Fimage-video-editor-example%40workspace%3Aexample"
+  resolution: "@technotoil/image-video-editor@file:../technotoil-image-video-editor-0.1.7.tgz#../technotoil-image-video-editor-0.1.7.tgz::hash=3d623b&locator=%40technotoil%2Fimage-video-editor-example%40workspace%3Aexample"
   dependencies:
     react-native-fs: "npm:^2.20.0"
   peerDependencies:
@@ -2616,7 +2616,7 @@ __metadata:
     react-native-image-crop-picker: ^0.51.1
     react-native-safe-area-context: ^5.5.2
     react-native-video: ">=6.0.0"
-  checksum: 10c0/503e38315e38c6bbf738d04f0ab6d47c0971771405dbd962eae12d796c825f77ad5c6e4fd6abdfde7300a3ad05e5d41b65cd7bbb0d852040e6f14766eaf96bcc
+  checksum: 10c0/72faf7050c1df1a1f5295147885331daf7dd01baedc434d20a009ca212c88c3033fcf3dc9936f143f7477c67f72170fb81fecde2498017d76cb430830c4e847b
   languageName: node
   linkType: hard
 
