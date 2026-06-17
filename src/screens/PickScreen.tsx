@@ -469,7 +469,7 @@ export function PickScreen({
                 <Text style={styles.selectionNumber}>{selIdx}</Text>
               </View>
             ) : (
-              <View style={styles.emptyBadge} />
+              <View style={[styles.emptyBadge, selectedItems.length >= maxSelection ? { opacity: 0.3, backgroundColor: 'rgba(0,0,0,0.3)', borderColor: 'rgba(255,255,255,0.5)' } : null]} />
             )}
           </View>
         )}

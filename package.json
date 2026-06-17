@@ -1,6 +1,6 @@
 {
   "name": "@technotoil/image-video-editor",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "A high-performance React Native image and video editor featuring video trimming, filters, photo overlay frames, and camera/gallery integration.",
   "main": "lib/commonjs/index.js",
   "module": "lib/module/index.js",

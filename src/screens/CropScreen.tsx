@@ -11,6 +11,7 @@ import {
   Platform,
   Alert,
   Modal,
+  PixelRatio,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { MediaItem } from '../types';
@@ -382,22 +383,40 @@ export function CropScreen({ item, onBack, onSave, aspectRatio = 'free', maxVide
     try {
       setSaving(true);
       if (!imageSize.width || !renderedImageSize.width) return;
-      const isRotated = (rotation % 180 === 90);
+    const isRotated = (rotation % 180 === 90);
+      
+      // renderedImageSize is in logical points (dp).
+      // Image.getSize() returns actual pixels.
+      // We must NOT multiply by PixelRatio here because Image.getSize already gives true pixel dimensions.
+      // However, on Android the layout system can sometimes report points, so we use
+      // a direct pixel-to-point ratio derived from actual image size vs rendered display size.
       const pixelWidth = isRotated ? imageSize.height : imageSize.width;
-      const scale = pixelWidth / renderedImageSize.width;
+      const pixelHeight = isRotated ? imageSize.width : imageSize.height;
+
+      // Scale: how many actual image pixels per 1 logical display point
+      const scaleX = pixelWidth / renderedImageSize.width;
+      const scaleY = pixelHeight / renderedImageSize.height;
 
       const finalCrop = {
-        x: Math.round((cropBox.left - renderedImageSize.left) * scale),
-        y: Math.round((cropBox.top - renderedImageSize.top) * scale),
-        width: Math.round(cropBox.width * scale),
-        height: Math.round(cropBox.height * scale),
+        x: Math.round((cropBox.left - renderedImageSize.left) * scaleX),
+        y: Math.round((cropBox.top - renderedImageSize.top) * scaleY),
+        width: Math.round(cropBox.width * scaleX),
+        height: Math.round(cropBox.height * scaleY),
+      };
+
+      // Sanity clamp so we never send out-of-bounds crop to native
+      const clampedCrop = {
+        x: Math.max(0, Math.min(finalCrop.x, pixelWidth - 1)),
+        y: Math.max(0, Math.min(finalCrop.y, pixelHeight - 1)),
+        width: Math.max(1, Math.min(finalCrop.width, pixelWidth - finalCrop.x)),
+        height: Math.max(1, Math.min(finalCrop.height, pixelHeight - finalCrop.y)),
       };
 
       const options = {
         rotateDegrees: straightenAngle + rotation,
         flipX,
         flipY,
-        crop: finalCrop,
+        crop: clampedCrop,
         brightness: 0, contrast: 1, saturation: 1, grayscale: false,
       };
 

@@ -1703,6 +1703,7 @@ export function EditorScreen({
             const safeStartMs = Math.min(edits.trimStart, Math.max(0, safeEndMs - 100));
             const isFullTrim = edits.trimStart === 0 && edits.trimEnd >= originalDuration;
 
+
             const outUri = await trimVideo(targetItem.uri, {
               startMs: safeStartMs,
               endMs: safeEndMs,
@@ -1710,6 +1711,7 @@ export function EditorScreen({
               ...(selectedMusic?.url ? { musicUri: selectedMusic.url, musicOffsetMs: cumulativeMusicOffsetMs } : {}),
               ...opts,
             });
+
 
             let newThumb = undefined;
             try {
