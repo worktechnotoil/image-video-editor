@@ -238,13 +238,26 @@ class MediaEditorModule(private val reactContext: ReactApplicationContext) :
         val y = (o["y"] as? Double ?: 0.0).toFloat()
         val color = (o["color"] as? String)?.let { parseColorSafe(it) } ?: android.graphics.Color.WHITE
         val fontSize = (o["fontSize"] as? Double ?: 16.0).toFloat()
-        val textPaint = android.graphics.Paint().apply {
+        val textPaint = android.text.TextPaint().apply {
           this.color = color
           this.textSize = fontSize
           this.isAntiAlias = true
           this.typeface = android.graphics.Typeface.DEFAULT_BOLD
         }
-        canvas.drawText(text, x, y, textPaint)
+        val staticLayout = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            android.text.StaticLayout.Builder.obtain(text, 0, text.length, textPaint, finalBitmap.width)
+                .setAlignment(android.text.Layout.Alignment.ALIGN_NORMAL)
+                .setLineSpacing(0f, 1f)
+                .setIncludePad(false)
+                .build()
+        } else {
+            @Suppress("DEPRECATION")
+            android.text.StaticLayout(text, textPaint, finalBitmap.width, android.text.Layout.Alignment.ALIGN_NORMAL, 1f, 0f, false)
+        }
+        canvas.save()
+        canvas.translate(x, y)
+        staticLayout.draw(canvas)
+        canvas.restore()
       }
 
       // Special Effects for Images

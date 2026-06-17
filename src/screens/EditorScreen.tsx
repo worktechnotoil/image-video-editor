@@ -242,6 +242,7 @@ export function EditorScreen({
   const [editsHistory, setEditsHistory] = useState<Record<string, any>>({});
   const editsHistoryRef = useRef<Record<string, any>>({});
   const [dimensionsMap, setDimensionsMap] = useState<Record<string, { width: number; height: number }>>({});
+  const [uiCanvasWidths, setUiCanvasWidths] = useState<Record<string, number>>({});
   const flatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
@@ -366,7 +367,8 @@ export function EditorScreen({
     };
 
     const frameConfig = (FRAME_CONFIGS as any)[edits.imageOptions.frame || ''] || { scale: 1, offsetY: 0 };
-    const renderScale = cropWidth / CARD_WIDTH;
+    const actualUiWidth = uiCanvasWidths[targetItem.id] || CARD_WIDTH;
+    const renderScale = cropWidth / actualUiWidth;
 
     const hasCrop = edits.cropRatio !== null || edits.zoomScale > 1 || edits.cropOffset.x !== 0 || edits.cropOffset.y !== 0;
 
@@ -1070,8 +1072,9 @@ export function EditorScreen({
 
     const frameConfig = (FRAME_CONFIGS as any)[imageOptions.frame || ''] || { scale: 1, offsetY: 0 };
 
-    // Scale factor to map screen points to actual image pixels (UI width is CARD_WIDTH)
-    const renderScale = cropWidth / CARD_WIDTH;
+    // Scale factor to map screen points to actual image pixels using exact measured UI width
+    const actualUiWidth = uiCanvasWidths[item.id] || CARD_WIDTH;
+    const renderScale = cropWidth / actualUiWidth;
 
     const hasCrop = cropRatio !== null || zoomScale > 1 || cropOffset.x !== 0 || cropOffset.y !== 0;
 
@@ -1881,6 +1884,12 @@ export function EditorScreen({
               alignSelf: 'center',
             }
           ]}
+          onLayout={(e) => {
+            const { width } = e.nativeEvent.layout;
+            if (width > 0) {
+              setUiCanvasWidths(prev => ({ ...prev, [cardItem.id]: width }));
+            }
+          }}
           {...(isActive && panel === 'transform' && cardItem.type === 'image' ? cropPan.panHandlers : {})}
         >
           {cardItem.type === 'image' ? (
@@ -2079,6 +2088,12 @@ export function EditorScreen({
               {...(panel === 'transform' ? cropPan.panHandlers : {})}
             >
               <View
+                onLayout={(e) => {
+                  const { width } = e.nativeEvent.layout;
+                  if (width > 0) {
+                    setUiCanvasWidths(prev => ({ ...prev, [item.id]: width }));
+                  }
+                }}
                 style={{
                   width: '100%',
                   aspectRatio: videoAspect || 1,
