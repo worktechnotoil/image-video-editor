@@ -965,14 +965,14 @@ export function EditorScreen({
 
   const maxPan = useMemo(() => {
     // If no cropRatio, we still want to allow panning/zooming if zoomScale > 1
-    const actualRatio = typeof cropRatio === 'number' ? cropRatio : dimensions.width / (dimensions.height || 1);
-
-    let imgW = dimensions.width;
-    let imgH = dimensions.height;
+    let imgW = dimensions.width || item.width || 1080;
+    let imgH = dimensions.height || item.height || 1920;
     if ((imageOptions.rotateDegrees || 0) % 180 !== 0) {
-      imgW = dimensions.height;
-      imgH = dimensions.width;
+      const temp = imgW;
+      imgW = imgH;
+      imgH = temp;
     }
+    const actualRatio = typeof cropRatio === 'number' ? cropRatio : imgW / (imgH || 1);
 
     const baseH = actualRatio <= 1 ? containerHeight - 24 : (SCREEN_WIDTH - 24) / actualRatio;
     const baseW = actualRatio > 1 ? SCREEN_WIDTH - 24 : baseH * actualRatio;
@@ -990,7 +990,7 @@ export function EditorScreen({
       boxW,
       boxH
     };
-  }, [cropRatio, dimensions, imageOptions.rotateDegrees, zoomScale, cropResizeScale, cropResizeScaleX, cropResizeScaleY, showMusicModal, containerHeight]);
+  }, [cropRatio, dimensions, item, imageOptions.rotateDegrees, zoomScale, cropResizeScale, cropResizeScaleX, cropResizeScaleY, showMusicModal, containerHeight]);
 
   const maxPanRef = useRef(maxPan);
   useEffect(() => {
@@ -1039,11 +1039,12 @@ export function EditorScreen({
   ).current;
 
   const activeOptions = useMemo(() => {
-    let imgW = dimensions.width;
-    let imgH = dimensions.height;
+    let imgW = dimensions.width || item.width || 1080;
+    let imgH = dimensions.height || item.height || 1920;
     if ((imageOptions.rotateDegrees || 0) % 180 !== 0) {
-      imgW = dimensions.height;
-      imgH = dimensions.width;
+      const temp = imgW;
+      imgW = imgH;
+      imgH = temp;
     }
 
     const actualRatio = typeof cropRatio === 'number' ? cropRatio : imgW / (imgH || 1);
@@ -1078,7 +1079,7 @@ export function EditorScreen({
       ...imageOptions,
       rotateDegrees: (imageOptions.rotateDegrees || 0) + straightenAngle,
       ...(hasCrop ? { crop: finalCrop } : {}),
-      imageAspectRatio: dimensions.width / (dimensions.height || 1),
+      imageAspectRatio: imgW / (imgH || 1),
       frameScale: imageOptions.frame ? frameConfig.scale : 1,
       frameOffsetY: imageOptions.frame ? (frameConfig.offsetY || 0) : 0,
       overlays: overlays.map(o => ({
@@ -1093,7 +1094,7 @@ export function EditorScreen({
         ? Image.resolveAssetSource(FRAME_IMAGES[imageOptions.frame]).uri 
         : undefined,
     };
-  }, [imageOptions, cropOffset, maxPan, dimensions, cropRatio, straightenAngle, overlays]);
+  }, [imageOptions, cropOffset, maxPan, dimensions, item, cropRatio, straightenAngle, overlays]);
 
   // For visual trim
 
@@ -1727,10 +1728,9 @@ export function EditorScreen({
             cumulativeMusicOffsetMs += newDuration;
           }
         } else {
-          if (selectedMusic) {
-            let outUri = targetItem.uri;
-            if (targetItem.type === 'image') {
-              outUri = await trimVideo(targetItem.uri, {
+          if (targetItem.type === 'image') {
+            if (selectedMusic) {
+              const outUri = await trimVideo(targetItem.uri, {
                 isImage: true,
                 musicUri: selectedMusic.url,
                 musicOffsetMs: cumulativeMusicOffsetMs,
@@ -1743,9 +1743,17 @@ export function EditorScreen({
                 grayscale: false,
               });
               cumulativeMusicOffsetMs += 10000;
-            } else {
-              const safeEndMs = targetItem.durationMs || 10000;
-              outUri = await trimVideo(targetItem.uri, {
+              updatedItems[i] = {
+                ...targetItem,
+                uri: outUri,
+                thumbnailUri: outUri,
+              };
+            }
+          } else {
+            const needsTrim = selectedMusic || (maxVideoDurationMs && (!targetItem.durationMs || targetItem.durationMs > maxVideoDurationMs));
+            if (needsTrim) {
+              const safeEndMs = maxVideoDurationMs ? Math.min(targetItem.durationMs || 10000, maxVideoDurationMs) : (targetItem.durationMs || 10000);
+              const outUri = await trimVideo(targetItem.uri, {
                 startMs: 0,
                 endMs: safeEndMs,
                 mute: isMuted,
@@ -1758,13 +1766,24 @@ export function EditorScreen({
                 saturation: 1,
                 grayscale: false,
               });
+
+              let newThumb = undefined;
+              try {
+                newThumb = await captureFrame(outUri, { timeMs: 0 });
+              } catch (e) {
+                console.warn('Could not generate filtered thumb', e);
+              }
+
+              updatedItems[i] = {
+                ...targetItem,
+                uri: outUri,
+                thumbnailUri: newThumb ? newThumb : targetItem.thumbnailUri,
+                durationMs: safeEndMs,
+              };
               cumulativeMusicOffsetMs += safeEndMs;
+            } else {
+              cumulativeMusicOffsetMs += targetItem.durationMs || 10000;
             }
-            updatedItems[i] = {
-              ...targetItem,
-              uri: outUri,
-              thumbnailUri: targetItem.type === 'image' ? outUri : targetItem.thumbnailUri,
-            };
           }
         }
       }
@@ -2271,30 +2290,36 @@ export function EditorScreen({
                         {thumbnails.map((uri, idx) => (
                           <Image key={idx} source={{ uri }} style={styles.filmstripImage} />
                         ))}
-                        <View style={[styles.timelineOverlay, { left: 0, width: (trimStart / duration) * TIMELINE_WIDTH }]} />
-                        <View style={[styles.timelineOverlay, { left: (trimEnd / duration) * TIMELINE_WIDTH, right: 0 }]} />
+                        <View ref={leftOverlayRef} style={[styles.timelineOverlay, { left: 0, width: startX.current }]} />
+                        <View ref={rightOverlayRef} style={[styles.timelineOverlay, { left: endX.current, right: 0 }]} />
                         <View
+                          ref={selectionRangeRef}
                           style={[
                             styles.selectionRange,
-                            { left: (trimStart / duration) * TIMELINE_WIDTH, width: ((trimEnd - trimStart) / duration) * TIMELINE_WIDTH }
+                            { left: startX.current, width: endX.current - startX.current }
                           ]}
+                          {...middlePan.panHandlers}
                         />
                       </Pressable>
                       <View
+                        ref={leftHandleRef}
                         style={[
                           styles.customHandle,
                           styles.customHandleLeft,
-                          { left: (trimStart / duration) * TIMELINE_WIDTH - 16 }
+                          { left: startX.current - 16 }
                         ]}
+                        {...startPan.panHandlers}
                       >
                         <View style={styles.handleBarLine} />
                       </View>
                       <View
+                        ref={rightHandleRef}
                         style={[
                           styles.customHandle,
                           styles.customHandleRight,
-                          { left: (trimEnd / duration) * TIMELINE_WIDTH - 16 }
+                          { left: endX.current - 16 }
                         ]}
+                        {...endPan.panHandlers}
                       >
                         <View style={styles.handleBarLine} />
                       </View>
@@ -2657,8 +2682,8 @@ export function EditorScreen({
                 keyExtractor={(it) => it.id}
                 initialScrollIndex={activeIndex}
                 getItemLayout={(_, index) => ({
-                  length: SCREEN_WIDTH,
-                  offset: SCREEN_WIDTH * index,
+                  length: SNAP_INTERVAL,
+                  offset: SNAP_INTERVAL * index,
                   index,
                 })}
                 horizontal

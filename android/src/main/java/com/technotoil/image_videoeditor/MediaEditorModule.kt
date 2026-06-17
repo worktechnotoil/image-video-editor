@@ -449,11 +449,11 @@ class MediaEditorModule(private val reactContext: ReactApplicationContext) :
         if (File(fontPath).exists()) {
           val textFilters = mutableListOf<String>()
           for (i in 0 until overlays.size()) {
-            val o = overlays.getMap(i)
+            val o = overlays.getMap(i) ?: continue
             val text = o.getString("text") ?: continue
             val x = if (o.hasKey("x")) o.getDouble("x") else 0.0
             val y = if (o.hasKey("y")) o.getDouble("y") else 0.0
-            val colorHex = if (o.hasKey("color")) o.getString("color") else "#FFFFFF"
+            val colorHex = if (o.hasKey("color")) o.getString("color") ?: "#FFFFFF" else "#FFFFFF"
             val fontSize = if (o.hasKey("fontSize")) o.getDouble("fontSize") else 24.0
             
             val safeText = text.replace(":", "\\:").replace("'", "\\'")

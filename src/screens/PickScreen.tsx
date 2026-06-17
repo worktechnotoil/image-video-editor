@@ -84,6 +84,12 @@ export function PickScreen({
   const [albums, setAlbums] = useState<Album[]>([]);
   const [loading, setLoading] = useState(false);
   const [previewUri, setPreviewUri] = useState<string | null>(null);
+  // Track if user has scrolled past the main preview
+  const [isScrolledPast, setIsScrolledPast] = useState(false);
+  // Only show overlay when user explicitly clicks media while scrolled past preview
+  const [showOverlay, setShowOverlay] = useState(false);
+  const flatListRef = useRef<FlatList>(null);
+  const PREVIEW_HEIGHT = Dimensions.get('window').width;
 
   // Aspect ratio logic
   const isRatioLocked = aspectRatio !== 'free';
@@ -101,6 +107,7 @@ export function PickScreen({
   );
   const [videoPaused, setVideoPaused] = useState(false);
   const scaleAnim = useRef(new Animated.Value(1)).current;
+  const overlayAnim = useRef(new Animated.Value(0)).current;
 
   const [showCustomCamera, setShowCustomCamera] = useState(false);
   const [facing, setFacing] = useState<'front' | 'back'>('front');
@@ -250,6 +257,15 @@ export function PickScreen({
     ];
   }, [filtered]);
 
+  // Show/hide floating overlay with animation
+  useEffect(() => {
+    Animated.timing(overlayAnim, {
+      toValue: showOverlay ? 1 : 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start();
+  }, [showOverlay]);
+
   useEffect(() => {
     let cancelled = false;
     setVideoPaused(false);
@@ -307,6 +323,11 @@ export function PickScreen({
       });
     } else {
       setSelectedMedia(item);
+    }
+
+    // Show floating overlay only if user is already scrolled past the main preview
+    if (isScrolledPast) {
+      setShowOverlay(true);
     }
 
     Animated.sequence([
@@ -535,7 +556,73 @@ export function PickScreen({
         </View>
       </Modal>
 
+      {/* Inner container: positions floatingOverlay relative to area below header */}
+      <View style={{ flex: 1, position: 'relative' }}>
+
+      {/* Floating overlay preview — shown when user clicks media while scrolled past main preview */}
+      <Animated.View
+        style={[
+          styles.floatingOverlay,
+          {
+            opacity: overlayAnim,
+            transform: [{ translateY: overlayAnim.interpolate({ inputRange: [0, 1], outputRange: [-PREVIEW_HEIGHT, 0] }) }],
+          },
+        ]}
+        pointerEvents={isScrolledPast ? 'box-none' : 'none'}
+      >
+        {selectedMedia?.type === 'video' ? (
+          <Pressable style={styles.previewImage} onPress={() => setVideoPaused((v) => !v)}>
+            {playableUri && isActive ? (
+              <VideoPreview
+                uri={playableUri}
+                paused={videoPaused || !isActive}
+                muted={false}
+                style={styles.previewImage}
+                resizeMode="cover"
+              />
+            ) : (
+              <Image
+                source={{ uri: selectedMedia.thumbnailUri || selectedMedia.uri }}
+                style={styles.previewImage}
+                resizeMode="cover"
+              />
+            )}
+            <View style={styles.previewOverlay}>
+              <View style={styles.playPauseCircle}>
+                <Ionicons name={videoPaused ? 'play' : 'pause'} size={24} color="#fff" />
+              </View>
+            </View>
+          </Pressable>
+        ) : (
+          <Image
+            source={{ uri: previewUri ?? selectedMedia?.uri }}
+            style={[styles.previewImage, cropMode === '1:1' ? styles.squareCrop : styles.originalCrop]}
+            resizeMode={isRatioLocked ? 'cover' : (cropMode === '1:1' ? 'cover' : 'contain')}
+          />
+        )}
+        <View style={styles.previewControls}>
+          {isRatioLocked && (
+            <View style={styles.ratioBadge}>
+              <Text style={styles.ratioBadgeText}>{aspectRatio}</Text>
+            </View>
+          )}
+          {!isRatioLocked && (
+            <Pressable
+              style={styles.cropToggle}
+              onPress={() => setCropMode((v) => (v === '1:1' ? 'original' : '1:1'))}
+            >
+              <Ionicons
+                name={cropMode === '1:1' ? 'square-outline' : 'expand-outline'}
+                size={20}
+                color="#fff"
+              />
+            </Pressable>
+          )}
+        </View>
+      </Animated.View>
+
       <FlatList
+        ref={flatListRef}
         data={listData}
         extraData={{
           selectedMedia,
@@ -554,17 +641,24 @@ export function PickScreen({
         stickyHeaderIndices={[1]}
         style={styles.libraryList}
         contentContainerStyle={styles.grid}
+        onScroll={(e) => {
+          const scrollY = e.nativeEvent.contentOffset.y;
+          const scrolledPast = scrollY > PREVIEW_HEIGHT - 10;
+          setIsScrolledPast(scrolledPast);
+          // When user scrolls back up to see main preview, hide the overlay
+          if (!scrolledPast) {
+            setShowOverlay(false);
+          }
+        }}
+        scrollEventThrottle={16}
         getItemLayout={(data, index) => {
-          const previewHeight = isRatioLocked && previewAspectRatio 
-            ? Dimensions.get('window').width / previewAspectRatio 
-            : 420;
           const albumRowHeight = 48;
           const rowHeight = Dimensions.get('window').width / 4;
-          
-          if (index === 0) return { length: previewHeight, offset: 0, index };
-          if (index === 1) return { length: albumRowHeight, offset: previewHeight, index };
-          
-          const offset = previewHeight + albumRowHeight + (index - 2) * rowHeight;
+
+          if (index === 0) return { length: PREVIEW_HEIGHT, offset: 0, index };
+          if (index === 1) return { length: albumRowHeight, offset: PREVIEW_HEIGHT, index };
+
+          const offset = PREVIEW_HEIGHT + albumRowHeight + (index - 2) * rowHeight;
           return { length: rowHeight, offset, index };
         }}
         removeClippedSubviews={false}
@@ -576,15 +670,11 @@ export function PickScreen({
         }
         renderItem={({ item }) => {
           if (item.type === 'preview') {
-            const previewStyleHeight = isRatioLocked && previewAspectRatio 
-              ? Dimensions.get('window').width / previewAspectRatio 
-              : 420;
-
             return (
               <Animated.View
                 style={[
                   styles.preview,
-                  { transform: [{ scale: scaleAnim }], height: previewStyleHeight },
+                  { transform: [{ scale: scaleAnim }], height: PREVIEW_HEIGHT },
                 ]}
               >
                 {selectedMedia?.type === 'video' ? (
@@ -617,14 +707,12 @@ export function PickScreen({
                     resizeMode={isRatioLocked ? 'cover' : (cropMode === '1:1' ? 'cover' : 'contain')}
                   />
                 )}
-
                 <View style={styles.previewControls}>
                   {isRatioLocked && (
                     <View style={styles.ratioBadge}>
                       <Text style={styles.ratioBadgeText}>{aspectRatio}</Text>
                     </View>
                   )}
-
                   {!isRatioLocked && (
                     <Pressable
                       style={styles.cropToggle}
@@ -701,6 +789,8 @@ export function PickScreen({
           </Pressable>
         ))}
       </View>
+
+      </View> {/* end inner container (floatingOverlay + FlatList + tabBar) */}
 
       {/* <View style={styles.postTypeBar}>
         {POST_TYPES.map((t) => (
@@ -913,7 +1003,19 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
   },
-  preview: { width: '100%', height: 420, backgroundColor: '#0f172a', overflow: 'hidden' },
+  preview: { width: '100%', backgroundColor: '#0f172a', overflow: 'hidden' },
+  floatingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    elevation: 20,
+    backgroundColor: '#0f172a',
+    overflow: 'hidden',
+    width: '100%',
+    height: Dimensions.get('window').width,
+  },
   previewImage: { width: '100%', height: '100%', overflow: 'hidden' },
   squareCrop: { height: '100%' },
   originalCrop: { height: '100%' },
