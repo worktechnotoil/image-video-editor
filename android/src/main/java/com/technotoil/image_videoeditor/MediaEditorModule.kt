@@ -112,13 +112,18 @@ class MediaEditorModule(private val reactContext: ReactApplicationContext) :
       }
 
       var outBitmap = bitmap
+      val jsW = if (options.hasKey("jsImgW")) options.getDouble("jsImgW") else 0.0
+      val jsH = if (options.hasKey("jsImgH")) options.getDouble("jsImgH") else 0.0
+      val scaleX = if (jsW > 0) (bitmap.width / jsW).toFloat() else 1f
+      val scaleY = if (jsH > 0) (bitmap.height / jsH).toFloat() else 1f
+
       if (options.hasKey("crop")) {
         val crop = options.getMap("crop")
         if (crop != null) {
-          val cw = crop.getInt("width")
-          val ch = crop.getInt("height")
-          val cx = crop.getInt("x")
-          val cy = crop.getInt("y")
+          val cw = (crop.getInt("width") * scaleX).toInt()
+          val ch = (crop.getInt("height") * scaleY).toInt()
+          val cx = (crop.getInt("x") * scaleX).toInt()
+          val cy = (crop.getInt("y") * scaleY).toInt()
           
           outBitmap = Bitmap.createBitmap(cw, ch, Bitmap.Config.ARGB_8888)
           val canvas = Canvas(outBitmap)
@@ -234,10 +239,10 @@ class MediaEditorModule(private val reactContext: ReactApplicationContext) :
       overlays?.toArrayList()?.forEach { anyOverlay ->
         val o = anyOverlay as? Map<*, *> ?: return@forEach
         val text = o["text"] as? String ?: return@forEach
-        val x = (o["x"] as? Double ?: 0.0).toFloat()
-        val y = (o["y"] as? Double ?: 0.0).toFloat()
+        val x = (o["x"] as? Double ?: 0.0).toFloat() * scaleX
+        val y = (o["y"] as? Double ?: 0.0).toFloat() * scaleY
         val color = (o["color"] as? String)?.let { parseColorSafe(it) } ?: android.graphics.Color.WHITE
-        val fontSize = (o["fontSize"] as? Double ?: 16.0).toFloat()
+        val fontSize = (o["fontSize"] as? Double ?: 16.0).toFloat() * scaleX
         val textPaint = android.text.TextPaint().apply {
           this.color = color
           this.textSize = fontSize

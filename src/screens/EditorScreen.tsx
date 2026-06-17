@@ -318,7 +318,7 @@ export function EditorScreen({
       setStraightenAngle(0);
       setIsMuted(selectedMusic ? true : false);
     }
-    
+
     // Force trim panel if video is too long
     if (targetItem.type === 'video' && maxVideoDurationMs && targetItem.durationMs && targetItem.durationMs > maxVideoDurationMs) {
       setPanel('trim');
@@ -346,15 +346,26 @@ export function EditorScreen({
       imgH = targetDim.width;
     }
 
-    const scale = maxPan.scale;
-    const cropWidth = maxPan.boxW / scale;
-    const cropHeight = maxPan.boxH / scale;
+    const actualRatio = typeof edits.cropRatio === 'number' ? edits.cropRatio : (imgW / (imgH || 1));
+    const containerHeight = SCREEN_WIDTH * 1.25;
+    const baseH = actualRatio <= 1 ? containerHeight - 24 : (SCREEN_WIDTH - 24) / actualRatio;
+    const baseW = actualRatio > 1 ? SCREEN_WIDTH - 24 : baseH * actualRatio;
+
+    const cropScaleX = edits.cropRatio === 'custom' ? (edits.cropResizeScaleX || 1) : (edits.cropResizeScale || 1);
+    const cropScaleY = edits.cropRatio === 'custom' ? (edits.cropResizeScaleY || 1) : (edits.cropResizeScale || 1);
+    const boxW = baseW * cropScaleX;
+    const boxH = baseH * cropScaleY;
+
+    const minScale = Math.max(boxW / (imgW || 1), boxH / (imgH || 1));
+    const totalScale = minScale * (edits.zoomScale || 1);
+    const cropWidth = boxW / totalScale;
+    const cropHeight = boxH / totalScale;
 
     const centerX = (imgW - cropWidth) / 2;
     const centerY = (imgH - cropHeight) / 2;
 
-    let nx = centerX - (edits.cropOffset.x / scale);
-    let ny = centerY - (edits.cropOffset.y / scale);
+    let nx = centerX - (edits.cropOffset.x / totalScale);
+    let ny = centerY - (edits.cropOffset.y / totalScale);
 
     nx = Math.max(0, Math.min(nx, imgW - cropWidth));
     ny = Math.max(0, Math.min(ny, imgH - cropHeight));
@@ -373,6 +384,8 @@ export function EditorScreen({
     const hasCrop = edits.cropRatio !== null || edits.zoomScale > 1 || edits.cropOffset.x !== 0 || edits.cropOffset.y !== 0;
 
     return {
+      jsImgW: imgW,
+      jsImgH: imgH,
       ...edits.imageOptions,
       rotateDegrees: (edits.imageOptions.rotateDegrees || 0) + edits.straightenAngle,
       ...(hasCrop ? { crop: finalCrop } : {}),
@@ -381,13 +394,13 @@ export function EditorScreen({
       frameOffsetY: edits.imageOptions.frame ? (frameConfig.offsetY || 0) : 0,
       overlays: edits.overlays.map((o: any) => ({
         text: o.text,
-        x: (o.x + 12) * renderScale,
-        y: (o.y + 12) * renderScale,
+        x: o.x * renderScale,
+        y: o.y * renderScale,
         color: o.color,
-        fontSize: o.fontSize * renderScale,
+        fontSize: o.fontSize,
       })),
-      frameUri: edits.imageOptions.frame && FRAME_IMAGES[edits.imageOptions.frame] 
-        ? Image.resolveAssetSource(FRAME_IMAGES[edits.imageOptions.frame]).uri 
+      frameUri: edits.imageOptions.frame && FRAME_IMAGES[edits.imageOptions.frame]
+        ? Image.resolveAssetSource(FRAME_IMAGES[edits.imageOptions.frame]).uri
         : undefined,
     };
   };
@@ -867,7 +880,7 @@ export function EditorScreen({
         hasMoved = false;
         setActiveDraggingId(id);
         setIsOverTrash(false);
-        
+
         setOverlays(prev => {
           const item = prev.find(o => o.id === id);
           if (item) {
@@ -893,7 +906,7 @@ export function EditorScreen({
             longPressTimeout = null;
           }
         }
-        
+
         const newX = startX + gesture.dx;
         const newY = startY + gesture.dy;
 
@@ -1041,27 +1054,34 @@ export function EditorScreen({
   ).current;
 
   const activeOptions = useMemo(() => {
-    let imgW = dimensions.width || item.width || 1080;
-    let imgH = dimensions.height || item.height || 1920;
+    let currentImgW = dimensionsMap[item.id]?.width || item.width || 1080;
+    let currentImgH = dimensionsMap[item.id]?.height || item.height || 1920;
     if ((imageOptions.rotateDegrees || 0) % 180 !== 0) {
-      const temp = imgW;
-      imgW = imgH;
-      imgH = temp;
+      const t = currentImgW;
+      currentImgW = currentImgH;
+      currentImgH = t;
     }
+    const actualRatio = typeof cropRatio === 'number' ? cropRatio : (currentImgW / (currentImgH || 1));
+    const currentContainerHeight = showMusicModal ? (SCREEN_WIDTH * 0.72) : (SCREEN_WIDTH * 1.25);
+    const baseH = actualRatio <= 1 ? currentContainerHeight - 24 : (SCREEN_WIDTH - 24) / actualRatio;
+    const baseW = actualRatio > 1 ? SCREEN_WIDTH - 24 : baseH * actualRatio;
+    const cScaleX = cropRatio === 'custom' ? cropResizeScaleX : cropResizeScale;
+    const cScaleY = cropRatio === 'custom' ? cropResizeScaleY : cropResizeScale;
+    const boxW = baseW * cScaleX;
+    const boxH = baseH * cScaleY;
+    const minScale = Math.max(boxW / (currentImgW || 1), boxH / (currentImgH || 1));
+    const totalScale = minScale * zoomScale;
+    const cropWidth = boxW / totalScale;
+    const cropHeight = boxH / totalScale;
 
-    const actualRatio = typeof cropRatio === 'number' ? cropRatio : imgW / (imgH || 1);
-    const scale = maxPan.scale;
-    const cropWidth = maxPan.boxW / scale;
-    const cropHeight = maxPan.boxH / scale;
+    const centerX = (currentImgW - cropWidth) / 2;
+    const centerY = (currentImgH - cropHeight) / 2;
 
-    const centerX = (imgW - cropWidth) / 2;
-    const centerY = (imgH - cropHeight) / 2;
+    let nx = centerX - (cropOffset.x / totalScale);
+    let ny = centerY - (cropOffset.y / totalScale);
 
-    let nx = centerX - (cropOffset.x / scale);
-    let ny = centerY - (cropOffset.y / scale);
-
-    nx = Math.max(0, Math.min(nx, imgW - cropWidth));
-    ny = Math.max(0, Math.min(ny, imgH - cropHeight));
+    nx = Math.max(0, Math.min(nx, currentImgW - cropWidth));
+    ny = Math.max(0, Math.min(ny, currentImgH - cropHeight));
 
     const finalCrop = {
       x: Math.round(nx),
@@ -1079,22 +1099,23 @@ export function EditorScreen({
     const hasCrop = cropRatio !== null || zoomScale > 1 || cropOffset.x !== 0 || cropOffset.y !== 0;
 
     return {
+      jsImgW: currentImgW,
+      jsImgH: currentImgH,
       ...imageOptions,
       rotateDegrees: (imageOptions.rotateDegrees || 0) + straightenAngle,
       ...(hasCrop ? { crop: finalCrop } : {}),
-      imageAspectRatio: imgW / (imgH || 1),
+      imageAspectRatio: currentImgW / (currentImgH || 1),
       frameScale: imageOptions.frame ? frameConfig.scale : 1,
       frameOffsetY: imageOptions.frame ? (frameConfig.offsetY || 0) : 0,
       overlays: overlays.map(o => ({
         text: o.text,
-        // Add 12px padding to match the visual position in the container
-        x: (o.x + 12) * renderScale,
-        y: (o.y + 12) * renderScale,
+        x: o.x,
+        y: o.y,
         color: o.color,
-        fontSize: o.fontSize * renderScale,
+        fontSize: o.fontSize,
       })),
-      frameUri: imageOptions.frame && FRAME_IMAGES[imageOptions.frame] 
-        ? Image.resolveAssetSource(FRAME_IMAGES[imageOptions.frame]).uri 
+      frameUri: imageOptions.frame && FRAME_IMAGES[imageOptions.frame]
+        ? Image.resolveAssetSource(FRAME_IMAGES[imageOptions.frame]).uri
         : undefined,
     };
   }, [imageOptions, cropOffset, maxPan, dimensions, item, cropRatio, straightenAngle, overlays]);
@@ -1203,7 +1224,7 @@ export function EditorScreen({
       onPanResponderMove: (_, gesture) => {
         let newX = Math.max(0, Math.min(endX.current - 32, startPanOffset.current + gesture.dx));
         let newTime = (newX / TIMELINE_WIDTH) * durationRef.current;
-        
+
         const currentTrimEnd = (endX.current / TIMELINE_WIDTH) * durationRef.current;
         if (maxVideoDurationMs && currentTrimEnd - newTime > maxVideoDurationMs) {
           newTime = currentTrimEnd - maxVideoDurationMs;
@@ -1233,7 +1254,7 @@ export function EditorScreen({
 
   const middlePanOffsetStart = useRef(0);
   const middlePanOffsetEnd = useRef(0);
-  
+
   const middlePan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -1249,10 +1270,10 @@ export function EditorScreen({
       },
       onPanResponderMove: (_, gesture) => {
         const windowWidth = middlePanOffsetEnd.current - middlePanOffsetStart.current;
-        
+
         let newStartX = middlePanOffsetStart.current + gesture.dx;
         let newEndX = middlePanOffsetEnd.current + gesture.dx;
-        
+
         if (newStartX < 0) {
           newStartX = 0;
           newEndX = windowWidth;
@@ -1645,13 +1666,13 @@ export function EditorScreen({
       } else {
         const safeEndMs = Math.min(trimEnd, item.durationMs || 10000);
         let safeStartMs = Math.min(trimStart, Math.max(0, safeEndMs - 100));
-        
+
         if (maxVideoDurationMs && safeEndMs - safeStartMs > maxVideoDurationMs) {
           safeStartMs = safeEndMs - maxVideoDurationMs;
         }
-        
+
         const isFullTrim = safeStartMs === 0 && safeEndMs >= (item.durationMs || 10000);
-        
+
         exportUri = await trimVideo(item.uri, {
           startMs: safeStartMs,
           endMs: safeEndMs,
@@ -1725,11 +1746,11 @@ export function EditorScreen({
             const originalDuration = targetItem.durationMs || 10000;
             const safeEndMs = Math.min(edits.trimEnd, originalDuration);
             let safeStartMs = Math.min(edits.trimStart, Math.max(0, safeEndMs - 100));
-            
+
             if (maxVideoDurationMs && safeEndMs - safeStartMs > maxVideoDurationMs) {
               safeStartMs = safeEndMs - maxVideoDurationMs;
             }
-            
+
             const isFullTrim = safeStartMs === 0 && safeEndMs >= originalDuration;
 
 

@@ -104,16 +104,23 @@ RCT_REMAP_METHOD(editImage,
     ciImage = [ciImage imageByApplyingTransform:CGAffineTransformMakeTranslation(-ciImage.extent.origin.x, -ciImage.extent.origin.y)];
   }
 
+  CGFloat maxW = ciImage.extent.size.width;
+  CGFloat maxH = ciImage.extent.size.height;
+
+  CGFloat jsW = [options[@"jsImgW"] doubleValue];
+  CGFloat jsH = [options[@"jsImgH"] doubleValue];
+  CGFloat scaleX = (jsW > 0) ? (maxW / jsW) : 1.0;
+  CGFloat scaleY = (jsH > 0) ? (maxH / jsH) : 1.0;
+
   // 2. Final Crop / Canvas Logic
   NSDictionary *crop = options[@"crop"];
   if ([crop isKindOfClass:NSDictionary.class] && crop.count > 0) {
-    CGFloat cx = [crop[@"x"] doubleValue];
-    CGFloat cy = [crop[@"y"] doubleValue];
-    CGFloat cw = [crop[@"width"] doubleValue];
-    CGFloat ch = [crop[@"height"] doubleValue];
+
+    CGFloat cx = [crop[@"x"] doubleValue] * scaleX;
+    CGFloat cy = [crop[@"y"] doubleValue] * scaleY;
+    CGFloat cw = [crop[@"width"] doubleValue] * scaleX;
+    CGFloat ch = [crop[@"height"] doubleValue] * scaleY;
     
-    CGFloat maxW = ciImage.extent.size.width;
-    CGFloat maxH = ciImage.extent.size.height;
     
     if (maxW > 0 && maxH > 0) {
       if (cx < 0) cx = 0;
@@ -292,12 +299,16 @@ RCT_REMAP_METHOD(editImage,
         NSString *colorHex = overlay[@"color"] ?: @"#FFFFFF";
         
         if (text && x && y) {
+            CGFloat finalX = x.doubleValue * scaleX;
+            CGFloat finalY = y.doubleValue * scaleY;
+            CGFloat finalSize = fontSize.floatValue * scaleX;
+            
             UIColor *color = [self colorFromHexString:colorHex];
             NSDictionary *attrs = @{
-                NSFontAttributeName: [UIFont boldSystemFontOfSize:fontSize.floatValue],
+                NSFontAttributeName: [UIFont boldSystemFontOfSize:finalSize],
                 NSForegroundColorAttributeName: color
             };
-            [text drawAtPoint:CGPointMake(x.doubleValue, y.doubleValue) withAttributes:attrs];
+            [text drawAtPoint:CGPointMake(finalX, finalY) withAttributes:attrs];
         }
     }
   }
