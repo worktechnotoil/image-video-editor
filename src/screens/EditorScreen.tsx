@@ -230,14 +230,8 @@ export function EditorScreen({
   });
 
   useEffect(() => {
-    setTrimStart(0);
-    const end = item.durationMs || maxVideoDurationMs || 10000;
-    setTrimEnd(maxVideoDurationMs ? Math.min(end, maxVideoDurationMs) : end);
     setThumbnails([]);
-    if (item.type === 'video' && maxVideoDurationMs && end > maxVideoDurationMs) {
-      setPanel('trim');
-    }
-  }, [item.id, item.durationMs, maxVideoDurationMs]);
+  }, [item.id]);
 
   const [editsHistory, setEditsHistory] = useState<Record<string, any>>({});
   const editsHistoryRef = useRef<Record<string, any>>({});
@@ -319,8 +313,15 @@ export function EditorScreen({
       setIsMuted(selectedMusic ? true : false);
     }
 
-    // Force trim panel if video is too long
+    // Force trim panel if video is too long and not yet trimmed within limits
+    let needsTrim = false;
     if (targetItem.type === 'video' && maxVideoDurationMs && targetItem.durationMs && targetItem.durationMs > maxVideoDurationMs) {
+      if (!saved || (saved.trimEnd - saved.trimStart > maxVideoDurationMs)) {
+        needsTrim = true;
+      }
+    }
+
+    if (needsTrim) {
       setPanel('trim');
     } else if (!saved) {
       setPanel(targetItem.type === 'video' ? 'trim' : 'filter');
@@ -394,10 +395,10 @@ export function EditorScreen({
       frameOffsetY: edits.imageOptions.frame ? (frameConfig.offsetY || 0) : 0,
       overlays: edits.overlays.map((o: any) => ({
         text: o.text,
-        x: o.x * renderScale,
-        y: o.y * renderScale,
+        x: (o.x + 4) * renderScale,
+        y: (o.y + 4) * renderScale,
         color: o.color,
-        fontSize: o.fontSize,
+        fontSize: o.fontSize * renderScale,
       })),
       frameUri: edits.imageOptions.frame && FRAME_IMAGES[edits.imageOptions.frame]
         ? Image.resolveAssetSource(FRAME_IMAGES[edits.imageOptions.frame]).uri
@@ -1109,10 +1110,10 @@ export function EditorScreen({
       frameOffsetY: imageOptions.frame ? (frameConfig.offsetY || 0) : 0,
       overlays: overlays.map(o => ({
         text: o.text,
-        x: o.x,
-        y: o.y,
+        x: (o.x + 4) * renderScale,
+        y: (o.y + 4) * renderScale,
         color: o.color,
-        fontSize: o.fontSize,
+        fontSize: o.fontSize * renderScale,
       })),
       frameUri: imageOptions.frame && FRAME_IMAGES[imageOptions.frame]
         ? Image.resolveAssetSource(FRAME_IMAGES[imageOptions.frame]).uri

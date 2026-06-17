@@ -221,6 +221,8 @@ export default function VideoEditor({
                 thumbnailUri: thumbnailUri ?? current.thumbnailUri,
                 durationMs: durationMs ?? current.durationMs
               };
+              delete updated.width;
+              delete updated.height;
 
               setEditedMedia((prev: Record<string, MediaItem>) => ({ ...prev, [current.id]: updated }));
 

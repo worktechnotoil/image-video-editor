@@ -413,6 +413,8 @@ export function CropScreen({ item, onBack, onSave, aspectRatio = 'free', maxVide
       };
 
       const options = {
+        jsImgW: pixelWidth,
+        jsImgH: pixelHeight,
         rotateDegrees: straightenAngle + rotation,
         flipX,
         flipY,
