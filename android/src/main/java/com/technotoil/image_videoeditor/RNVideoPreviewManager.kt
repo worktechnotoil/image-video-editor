@@ -292,7 +292,11 @@ class RNVideoPreviewManager(private val reactContext: ReactApplicationContext) :
   @ReactProp(name = "seekToMs")
   fun setSeekToMs(view: RNVideoView, seekToMs: Int) {
     if (seekToMs >= 0) {
-      view.mediaPlayer?.seekTo(seekToMs)
+      if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+        view.mediaPlayer?.seekTo(seekToMs.toLong(), android.media.MediaPlayer.SEEK_CLOSEST)
+      } else {
+        view.mediaPlayer?.seekTo(seekToMs)
+      }
     }
   }
 }

@@ -167,8 +167,12 @@ export default function VideoEditor({
             </View>
           )}
         </View>
-        {screen === 'editor' && current && (
-           <EditorScreen 
+        {current && (
+          <View style={[
+            { flex: 1 },
+            screen !== 'editor' && { position: 'absolute', width: '100%', height: '100%', opacity: 0, pointerEvents: 'none', zIndex: -1 }
+          ]}>
+             <EditorScreen 
             items={items}
             initialIndex={Math.max(0, items.findIndex(it => it.id === current.id))}
             maxVideoDurationMs={maxVideoDurationMs}
@@ -207,9 +211,11 @@ export default function VideoEditor({
             }}
             musicList={musicList}
            />
+          </View>
         )}
         {screen === 'crop' && current && (
           <CropScreen
+            key={current.id + (current.uri || '')}
             item={current}
             aspectRatio={aspectRatio}
             maxVideoDurationMs={maxVideoDurationMs}
@@ -232,6 +238,21 @@ export default function VideoEditor({
 
               setCurrent(updated);
               setScreen('editor');
+            }}
+            onReset={() => {
+              const original = originals[current.id];
+              if (original) {
+                const updated = { ...original };
+                setEditedMedia((prev: Record<string, MediaItem>) => {
+                  const next = { ...prev };
+                  delete next[current.id];
+                  return next;
+                });
+                setItems((prev: MediaItem[]) =>
+                  prev.map((it) => it.id === current.id ? updated : it)
+                );
+                setCurrent(updated);
+              }
             }}
           />
         )}

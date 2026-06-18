@@ -378,6 +378,86 @@ class MediaEditorModule(private val reactContext: ReactApplicationContext) :
         }
       }
 
+      // Audio config & Video Dimensions
+      var hasVideoAudio = false
+      var videoWidth = 1080
+      var videoHeight = 1920
+      if (!isImage) {
+        try {
+          val retriever = MediaMetadataRetriever()
+          retriever.setDataSource(reactContext, uri)
+          val wStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+          val hStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+          val rStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
+          if (wStr != null && hStr != null) {
+            val rot = rStr?.toIntOrNull() ?: 0
+            if (rot == 90 || rot == 270) {
+              videoWidth = hStr.toInt()
+              videoHeight = wStr.toInt()
+            } else {
+              videoWidth = wStr.toInt()
+              videoHeight = hStr.toInt()
+            }
+          }
+          val hasAudioStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO)
+          hasVideoAudio = "yes" == hasAudioStr
+          retriever.release()
+        } catch (e: Exception) {}
+      }
+
+      var textOverlayFile: File? = null
+      val overlays = if (options.hasKey("overlays")) options.getArray("overlays") else null
+      if (overlays != null && overlays.size() > 0) {
+         try {
+           val bitmap = Bitmap.createBitmap(videoWidth, videoHeight, Bitmap.Config.ARGB_8888)
+           val canvas = Canvas(bitmap)
+           val jsW = if (options.hasKey("jsImgW")) options.getDouble("jsImgW") else 0.0
+           val jsH = if (options.hasKey("jsImgH")) options.getDouble("jsImgH") else 0.0
+           val scaleX = if (jsW > 0) (videoWidth / jsW).toFloat() else 1f
+           val scaleY = if (jsH > 0) (videoHeight / jsH).toFloat() else 1f
+           for (i in 0 until overlays.size()) {
+               val o = overlays.getMap(i) ?: continue
+               val text = o.getString("text") ?: continue
+               val x = (if (o.hasKey("x")) o.getDouble("x") else 0.0).toFloat() * scaleX
+               val y = (if (o.hasKey("y")) o.getDouble("y") else 0.0).toFloat() * scaleY
+               val colorHex = if (o.hasKey("color")) o.getString("color") ?: "#FFFFFF" else "#FFFFFF"
+               val fontSize = (if (o.hasKey("fontSize")) o.getDouble("fontSize") else 24.0).toFloat() * scaleX
+               val textPaint = android.text.TextPaint().apply {
+                   this.color = parseColorSafe(colorHex)
+                   this.textSize = fontSize
+                   this.isAntiAlias = true
+                   this.typeface = android.graphics.Typeface.DEFAULT_BOLD
+               }
+               val staticLayout = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                   android.text.StaticLayout.Builder.obtain(text, 0, text.length, textPaint, videoWidth)
+                       .setAlignment(android.text.Layout.Alignment.ALIGN_NORMAL)
+                       .setLineSpacing(0f, 1f)
+                       .setIncludePad(false)
+                       .build()
+               } else {
+                   @Suppress("DEPRECATION")
+                   android.text.StaticLayout(text, textPaint, videoWidth, android.text.Layout.Alignment.ALIGN_NORMAL, 1f, 0f, false)
+               }
+               canvas.save()
+               canvas.translate(x, y)
+               staticLayout.draw(canvas)
+               canvas.restore()
+           }
+           textOverlayFile = File.createTempFile("text_overlay_", ".png", reactContext.cacheDir)
+           FileOutputStream(textOverlayFile).use { out ->
+               bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+           }
+           bitmap.recycle()
+         } catch (e: Exception) {
+           android.util.Log.e("RNMediaEditor", "Failed to create text overlay", e)
+         }
+      }
+
+      var inputCounter = 1 // 0 is video
+      val frameInputIndex = if (frameFile != null) inputCounter++ else -1
+      val textInputIndex = if (textOverlayFile != null) inputCounter++ else -1
+      val musicInputIndex = if (hasMusic && musicFile != null) inputCounter++ else -1
+
       fun f(d: Double): String = String.format(Locale.US, "%.4f", d)
       fun escapePath(path: String): String = path.replace("\"", "\\\"")
 
@@ -412,33 +492,44 @@ class MediaEditorModule(private val reactContext: ReactApplicationContext) :
       if (hasFrame && frameFile != null) {
         val insetLabel = f(frameScale.coerceIn(0.1, 1.0))
         val oy = f(frameOffsetY)
-        val vScale = "$currentLabel" + "scale=iw*${insetLabel}:ih*${insetLabel},pad=iw/${insetLabel}:ih/${insetLabel}:(ow-iw)/2:(oh-ih)/2+(${oy}*oh):color=black[v_scaled]"
+        val vScale = "$currentLabel" + "scale='trunc(iw*${insetLabel}/2)*2':'trunc(ih*${insetLabel}/2)*2',pad='trunc(iw/${insetLabel}/2)*2':'trunc(ih/${insetLabel}/2)*2':(ow-iw)/2:(oh-ih)/2+(${oy}*oh):color=black[v_scaled]"
         filterSteps.add(vScale)
-        filterSteps.add("[1:v][v_scaled]scale2ref=w=iw:h=ih[frame_ref][v_padded]")
+        filterSteps.add("[${frameInputIndex}:v][v_scaled]scale2ref=w=iw:h=ih[frame_ref][v_padded]")
         filterSteps.add("[v_padded][frame_ref]overlay=0:0:format=auto[v_framed]")
         currentLabel = "[v_framed]"
       }
 
-      // 4. Color adjustments (Apply after frame so the frame is also affected)
+      // 4. Color adjustments — use hue+curves instead of eq (eq not in https build)
       val colorFilters = mutableListOf<String>()
-      if (Math.abs(brightness) > 0.0001 || Math.abs(contrast - 1.0) > 0.0001 || Math.abs(saturation - 1.0) > 0.0001) {
-        colorFilters.add("eq=brightness=${f(brightness)}:contrast=${f(contrast)}:saturation=${f(saturation)}")
+      val hasBrightness = Math.abs(brightness) > 0.0001
+      val hasContrast = Math.abs(contrast - 1.0) > 0.0001
+      val hasSaturation = Math.abs(saturation - 1.0) > 0.0001
+
+      if (hasBrightness || hasContrast) {
+        // Map brightness (-1..1) to output shift, contrast (0..2) to slope
+        // curves: set linear points (in/out) — "0/low 1/high"
+        val low = ((1.0 - contrast) / 2.0 + brightness).coerceIn(0.0, 1.0)
+        val high = ((1.0 + contrast) / 2.0 + brightness).coerceIn(0.0, 1.0)
+        colorFilters.add("curves=all='0/${f(low)} 1/${f(high)}'")
       }
-      if (grayscale) {
-        colorFilters.add("hue=s=0")
+      if (hasSaturation || grayscale) {
+        val sat = if (grayscale) 0.0 else saturation
+        colorFilters.add("hue=s=${f(sat)}")
       }
       if (colorFilters.isNotEmpty()) {
         filterSteps.add("$currentLabel${colorFilters.joinToString(",")}[v_colored]")
         currentLabel = "[v_colored]"
       }
 
+
       // 5. Tint overlay
       val shouldTint = !tintColor.isNullOrEmpty() && tintOpacity > 0.001
       if (shouldTint) {
         val safeTint = tintColor!!.trim()
-        filterSteps.add("color=c=${safeTint}@${f(tintOpacity)}:size=2x2[tc]")
-        filterSteps.add("[tc]$currentLabel" + "scale2ref=w=iw:h=ih[tc2][v_tint_base]")
-        filterSteps.add("[v_tint_base][tc2]overlay=0:0:format=auto[v_tinted]")
+        val baseColor = if (safeTint.startsWith("#")) safeTint.replace("#", "0x") else safeTint
+        val colorString = "$baseColor@${f(tintOpacity)}"
+        filterSteps.add("color=c=${colorString}:s=${videoWidth}x${videoHeight}[tc]")
+        filterSteps.add("${currentLabel}[tc]overlay=shortest=1:format=auto[v_tinted]")
         currentLabel = "[v_tinted]"
       }
 
@@ -450,7 +541,7 @@ class MediaEditorModule(private val reactContext: ReactApplicationContext) :
             currentLabel = "[v_effect]"
           }
           "pixelize" -> {
-            filterSteps.add("$currentLabel" + "scale=iw/10:ih/10,scale=iw*10:ih*10:flags=neighbor[v_effect]")
+            filterSteps.add("${currentLabel}scale=trunc(iw/10):trunc(ih/10),scale=trunc(iw*10):trunc(ih*10):flags=neighbor[v_effect]")
             currentLabel = "[v_effect]"
           }
           "grain" -> {
@@ -461,27 +552,10 @@ class MediaEditorModule(private val reactContext: ReactApplicationContext) :
       }
 
       // 7. Text overlays
-      val overlays = if (options.hasKey("overlays")) options.getArray("overlays") else null
-      if (overlays != null && overlays.size() > 0) {
-        val fontPath = "/system/fonts/Roboto-Regular.ttf"
-        if (File(fontPath).exists()) {
-          val textFilters = mutableListOf<String>()
-          for (i in 0 until overlays.size()) {
-            val o = overlays.getMap(i) ?: continue
-            val text = o.getString("text") ?: continue
-            val x = if (o.hasKey("x")) o.getDouble("x") else 0.0
-            val y = if (o.hasKey("y")) o.getDouble("y") else 0.0
-            val colorHex = if (o.hasKey("color")) o.getString("color") ?: "#FFFFFF" else "#FFFFFF"
-            val fontSize = if (o.hasKey("fontSize")) o.getDouble("fontSize") else 24.0
-            
-            val safeText = text.replace(":", "\\:").replace("'", "\\'")
-            textFilters.add("drawtext=text='${safeText}':fontfile=${fontPath}:x=${f(x)}:y=${f(y)}:fontsize=${f(fontSize)}:fontcolor=${colorHex}")
-          }
-          if (textFilters.isNotEmpty()) {
-            filterSteps.add("$currentLabel${textFilters.joinToString(",")}[v_text]")
-            currentLabel = "[v_text]"
-          }
-        }
+      if (textOverlayFile != null) {
+        filterSteps.add("[${textInputIndex}:v]$currentLabel" + "scale2ref=w=iw:h=ih[text_scaled][v_text_base]")
+        filterSteps.add("[v_text_base][text_scaled]overlay=0:0:shortest=1:format=auto[v_text]")
+        currentLabel = "[v_text]"
       }
 
       val hasVisualFilters = filterSteps.isNotEmpty() || isImage
@@ -489,26 +563,12 @@ class MediaEditorModule(private val reactContext: ReactApplicationContext) :
       // Final output label assignment - ensure max resolution and even dimensions
       if (hasVisualFilters) {
         if (currentLabel != "[vout]") {
-          filterSteps.add("${currentLabel}scale='min(1920,iw)':'min(1920,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2[vout]")
+          filterSteps.add("${currentLabel}scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p[vout]")
           currentLabel = "[vout]"
         }
       }
 
       // Audio configuration
-      var hasVideoAudio = false
-      if (!isImage) {
-        try {
-          val retriever = MediaMetadataRetriever()
-          retriever.setDataSource(reactContext, uri)
-          val hasAudioStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO)
-          hasVideoAudio = "yes" == hasAudioStr
-          retriever.release()
-        } catch (e: Exception) {
-          // ignore
-        }
-      }
-
-      val musicInputIndex = if (frameFile != null) 2 else 1
 
       val musicOffsetMs = if (options.hasKey("musicOffsetMs")) options.getDouble("musicOffsetMs") else 0.0
 
@@ -547,9 +607,11 @@ class MediaEditorModule(private val reactContext: ReactApplicationContext) :
         cmdList.add("-i")
         cmdList.add(inputFile.absolutePath)
       } else {
-        // Fast seek on input
-        cmdList.add("-ss")
-        cmdList.add(ssString)
+        if (ss > 0.001) {
+          // Fast seek on input
+          cmdList.add("-ss")
+          cmdList.add(ssString)
+        }
         cmdList.add("-i")
         cmdList.add(inputFile.absolutePath)
         cmdList.add("-t")
@@ -559,6 +621,11 @@ class MediaEditorModule(private val reactContext: ReactApplicationContext) :
       if (frameFile != null) {
         cmdList.add("-i")
         cmdList.add(frameFile.absolutePath)
+      }
+
+      if (textOverlayFile != null) {
+        cmdList.add("-i")
+        cmdList.add(textOverlayFile.absolutePath)
       }
 
       if (hasMusic && musicFile != null) {
@@ -593,11 +660,9 @@ class MediaEditorModule(private val reactContext: ReactApplicationContext) :
       
       if (hasVisualFilters) {
         cmdList.add("-c:v")
-        cmdList.add("h264_mediacodec")
-        cmdList.add("-b:v")
-        cmdList.add("5M")
-        cmdList.add("-pix_fmt")
-        cmdList.add("yuv420p")
+        cmdList.add("mpeg4")
+        cmdList.add("-q:v")
+        cmdList.add("5")
       } else {
         cmdList.add("-c:v")
         cmdList.add("copy")
@@ -612,7 +677,9 @@ class MediaEditorModule(private val reactContext: ReactApplicationContext) :
         try {
           if (inputFile.exists()) inputFile.delete()
           frameFile?.let { try { if (it.exists()) it.delete() } catch (_: Exception) {} }
+          textOverlayFile?.let { try { if (it.exists()) it.delete() } catch (_: Exception) {} }
           musicFile?.let { try { if (it.exists()) it.delete() } catch (_: Exception) {} }
+          
           val rc = session.returnCode
           if (ReturnCode.isSuccess(rc)) {
             promise.resolve(Uri.fromFile(outFile).toString())

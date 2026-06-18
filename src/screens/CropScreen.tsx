@@ -102,8 +102,9 @@ interface CropScreenProps {
   onSave: (uri: string, thumb?: string, duration?: number) => void;
   aspectRatio?: '1:1' | '4:3' | '4:5' | '16:9' | '9:16' | 'free';
   maxVideoDurationMs?: number;
+  onReset?: () => void;
 }
-export function CropScreen({ item, onBack, onSave, aspectRatio = 'free', maxVideoDurationMs }: CropScreenProps) {
+export function CropScreen({ item, onBack, onSave, onReset, aspectRatio = 'free', maxVideoDurationMs }: CropScreenProps) {
   const isRatioLocked = aspectRatio !== 'free';
   const getInitialRatioLabel = () => {
     if (!aspectRatio || aspectRatio === 'free') return 'Free';
@@ -445,6 +446,7 @@ export function CropScreen({ item, onBack, onSave, aspectRatio = 'free', maxVide
     setFlipY(false);
     setSelectedRatio(getInitialRatioLabel());
     setIsFixedRatio(isRatioLocked);
+    if (onReset) onReset();
   };
 
   const sliderPan = useRef(

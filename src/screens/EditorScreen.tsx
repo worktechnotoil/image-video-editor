@@ -408,6 +408,12 @@ export function EditorScreen({
 
   const [saving, setSaving] = useState(false);
   const [videoPaused, setVideoPaused] = useState(false);
+  const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setIsReady(true), 350);
+    return () => clearTimeout(timer);
+  }, []);
   const resolvedMusicList = musicList || [];
 
   const [selectedMusic, setSelectedMusic] = useState<MusicTrack | null>(null);
@@ -481,7 +487,7 @@ export function EditorScreen({
 
   const throttledSeek = (time: number) => {
     const now = Date.now();
-    if (now - lastSeekTime.current > 65) {
+    if (now - lastSeekTime.current > 200) {
       lastSeekTime.current = now;
       setSeekToMs(time);
       if (seekTimeout.current) {
@@ -2326,14 +2332,12 @@ export function EditorScreen({
               >
                 <View style={{ width: TIMELINE_WIDTH }}>
                   {/* Ruler */}
-                  <View style={styles.timelineRuler}>
-                    <View style={styles.timelineRulerDot} />
-                    <Text style={styles.timelineRulerText}>5s</Text>
-                    <View style={styles.timelineRulerDot} />
-                    <Text style={styles.timelineRulerText}>10s</Text>
-                    <View style={styles.timelineRulerDot} />
-                    <Text style={styles.timelineRulerText}>15s</Text>
-                    <View style={styles.timelineRulerDot} />
+                  <View style={[styles.timelineRuler, { justifyContent: 'space-between' }]}>
+                    <Text style={styles.timelineRulerText}>0s</Text>
+                    <Text style={styles.timelineRulerText}>{Math.round(duration / 4000)}s</Text>
+                    <Text style={styles.timelineRulerText}>{Math.round(duration / 2000)}s</Text>
+                    <Text style={styles.timelineRulerText}>{Math.round((duration * 3) / 4000)}s</Text>
+                    <Text style={styles.timelineRulerText}>{Math.round(duration / 1000)}s</Text>
                   </View>
 
                   <View style={styles.timelineTracksContainer}>
@@ -2598,31 +2602,33 @@ export function EditorScreen({
               }}
             >
               {/* Fullscreen Video */}
-              <VideoPreview
-                uri={item.uri}
-                paused={videoPaused}
-                muted={isMuted}
-                style={[
-                  styles.fullVideo,
-                  {
-                    position: 'relative',
-                    width: '100%',
-                    height: '100%',
-                    transform: [
-                      { scale: zoomScale },
-                      { translateX: cropOffset.x },
-                      { translateY: cropOffset.y }
-                    ]
-                  }
-                ]}
-                resizeMode={cropRatio ? "cover" : "contain"}
-                trimStartMs={trimStart}
-                trimEndMs={trimEnd}
-                seekToMs={seekToMs}
-                onChange={(e) => {
-                  setCurrentTimeMs(e.nativeEvent.currentTimeMs);
-                }}
-              />
+              {!saving && isReady && (
+                <VideoPreview
+                  uri={item.uri}
+                  paused={videoPaused}
+                  muted={isMuted}
+                  style={[
+                    styles.fullVideo,
+                    {
+                      position: 'relative',
+                      width: '100%',
+                      height: '100%',
+                      transform: [
+                        { scale: zoomScale },
+                        { translateX: cropOffset.x },
+                        { translateY: cropOffset.y }
+                      ]
+                    }
+                  ]}
+                  resizeMode={cropRatio ? "cover" : "contain"}
+                  trimStartMs={trimStart}
+                  trimEndMs={trimEnd}
+                  seekToMs={seekToMs}
+                  onChange={(e) => {
+                    setCurrentTimeMs(e.nativeEvent.currentTimeMs);
+                  }}
+                />
+              )}
 
               {/* Text Overlays */}
               {overlays.map((overlay) => {

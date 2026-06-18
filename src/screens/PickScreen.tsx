@@ -436,7 +436,7 @@ export function PickScreen({
   const renderThumb = ({ item }: { item: MediaItem }) => {
     if (item.id === 'camera_trigger') {
       return (
-        <Pressable style={styles.cameraGridContainer} onPress={handleOpenCamera}>
+        <Pressable key={item.id} style={styles.cameraGridContainer} onPress={handleOpenCamera}>
           <View style={styles.cameraGridBox}>
             <CameraIcon />
           </View>
@@ -450,6 +450,7 @@ export function PickScreen({
 
     return (
       <Pressable
+        key={item.id}
         style={styles.thumbContainer}
         onPress={() => handleSelectItem(item)}
         onLongPress={() => handleLongPressItem(item)}

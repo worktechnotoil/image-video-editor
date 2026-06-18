@@ -50,7 +50,7 @@ Ensure the following keys are added to your `Info.plist`:
 Make sure to add the FFmpeg kit dependency in your app's `android/app/build.gradle`:
 ```groovy
 dependencies {
-    implementation("io.github.maitrungduc1410:ffmpeg-kit-min:6.0.1")
+    implementation("com.arthenica:ffmpeg-kit-full-gpl:6.0-2")
 }
 ```
 
