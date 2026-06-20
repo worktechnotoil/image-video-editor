@@ -56,8 +56,30 @@ class MediaEditorModule(private val reactContext: ReactApplicationContext) :
   fun editImage(uriString: String, options: ReadableMap, promise: Promise) {
     try {
       val uri = cleanUri(uriString)
+      val isLivePreview = options.hasKey("isLivePreview") && options.getBoolean("isLivePreview")
+      val bfOptions = BitmapFactory.Options()
+      
+      if (isLivePreview) {
+        val inputBounds = reactContext.contentResolver.openInputStream(uri)
+        bfOptions.inJustDecodeBounds = true
+        BitmapFactory.decodeStream(inputBounds, null, bfOptions)
+        inputBounds?.close()
+        
+        var inSampleSize = 1
+        val reqW = if (options.hasKey("jsImgW")) options.getDouble("jsImgW").toInt() else 800
+        val reqH = if (options.hasKey("jsImgH")) options.getDouble("jsImgH").toInt() else 800
+        val maxReq = Math.max(reqW, reqH)
+        val maxImg = Math.max(bfOptions.outWidth, bfOptions.outHeight)
+        
+        if (maxImg > maxReq && maxReq > 0) {
+          inSampleSize = Math.round((maxImg / maxReq).toFloat())
+        }
+        bfOptions.inJustDecodeBounds = false
+        bfOptions.inSampleSize = inSampleSize
+      }
+
       val input = reactContext.contentResolver.openInputStream(uri)
-      val original = BitmapFactory.decodeStream(input)
+      val original = BitmapFactory.decodeStream(input, null, bfOptions)
       input?.close()
 
       if (original == null) {

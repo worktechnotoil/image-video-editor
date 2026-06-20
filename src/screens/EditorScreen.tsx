@@ -14,6 +14,7 @@ import {
   Modal,
   FlatList,
   ActivityIndicator,
+  Keyboard,
 } from 'react-native';
 import { editImage, trimVideo } from '../native/MediaEditor';
 import { captureFrame } from '../native/FrameGrabber';
@@ -237,7 +238,31 @@ export function EditorScreen({
   const editsHistoryRef = useRef<Record<string, any>>({});
   const [dimensionsMap, setDimensionsMap] = useState<Record<string, { width: number; height: number }>>({});
   const [uiCanvasWidths, setUiCanvasWidths] = useState<Record<string, number>>({});
+  const [livePreviewUris, setLivePreviewUris] = useState<Record<string, string>>({});
+  const previewDebounceRef = useRef<any>(null);
   const flatListRef = useRef<FlatList>(null);
+  const prevIndexRef = useRef<number | null>(activeIndex);
+  const mutableCallbacks = useRef<{ save: any, load: any }>({ save: null, load: null });
+
+  const onViewableItemsChangedRef = useRef(({ viewableItems }: any) => {
+    if (viewableItems.length > 0) {
+      const newIndex = viewableItems[0].index;
+      if (newIndex != null && newIndex >= 0 && newIndex < items.length) {
+        if (newIndex !== prevIndexRef.current) {
+          if (prevIndexRef.current !== null) {
+            mutableCallbacks.current.save?.(prevIndexRef.current);
+          }
+          setActiveIndex(newIndex);
+          mutableCallbacks.current.load?.(newIndex);
+          prevIndexRef.current = newIndex;
+        }
+      }
+    }
+  });
+  const viewabilityConfigRef = useRef({
+    itemVisiblePercentThreshold: 50,
+    minimumViewTime: 10,
+  });
 
   useEffect(() => {
     if (initialIndex > 0 && flatListRef.current) {
@@ -266,6 +291,9 @@ export function EditorScreen({
       zoomScale,
       straightenAngle,
       isMuted,
+      stickers,
+      captions,
+      activeEffect,
     };
     editsHistoryRef.current[targetItem.id] = currentEdits;
     setEditsHistory((prev) => ({
@@ -291,6 +319,9 @@ export function EditorScreen({
       setZoomScale(saved.zoomScale);
       setStraightenAngle(saved.straightenAngle);
       setIsMuted(selectedMusic ? true : saved.isMuted);
+      setStickers(saved.stickers || []);
+      setCaptions(saved.captions || []);
+      setActiveEffect(saved.activeEffect || 'none');
     } else {
       setActiveFilter('none');
       setImageOptions({
@@ -311,6 +342,9 @@ export function EditorScreen({
       setZoomScale(1);
       setStraightenAngle(0);
       setIsMuted(selectedMusic ? true : false);
+      setStickers([]);
+      setCaptions([]);
+      setActiveEffect('none');
     }
 
     // Force trim panel if video is too long and not yet trimmed within limits
@@ -401,7 +435,7 @@ export function EditorScreen({
         fontSize: o.fontSize * renderScale,
       })),
       frameUri: edits.imageOptions.frame && FRAME_IMAGES[edits.imageOptions.frame]
-        ? Image.resolveAssetSource(FRAME_IMAGES[edits.imageOptions.frame]).uri
+        ? edits.imageOptions.resolvedFrameUri || Image.resolveAssetSource(FRAME_IMAGES[edits.imageOptions.frame]).uri
         : undefined,
     };
   };
@@ -1451,6 +1485,82 @@ export function EditorScreen({
     setImageOptions((prev) => ({ ...prev, ...patch }));
   };
 
+  useEffect(() => {
+    if (item.type !== 'image') return;
+    
+    if (previewDebounceRef.current) {
+      clearTimeout(previewDebounceRef.current);
+    }
+
+    const hasColorChanges = activeFilter !== 'none' ||
+      (imageOptions.brightness || 0) !== 0 ||
+      (imageOptions.contrast || 1) !== 1 ||
+      (imageOptions.saturation || 1) !== 1 ||
+      imageOptions.grayscale;
+
+    if (!hasColorChanges) {
+      setLivePreviewUris(prev => {
+        if (!prev[item.id]) return prev;
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+      return;
+    }
+
+    previewDebounceRef.current = setTimeout(() => {
+      let finalOptions: any = {
+        brightness: imageOptions.brightness || 0,
+        contrast: imageOptions.contrast || 1,
+        saturation: imageOptions.saturation || 1,
+        grayscale: imageOptions.grayscale || false,
+      };
+
+      if (activeFilter !== 'none') {
+        const f = (FILTERS as any)[activeFilter];
+        if (f) {
+          finalOptions.brightness = finalOptions.brightness + (f.brightness || 0);
+          finalOptions.contrast = finalOptions.contrast * (f.contrast || 1);
+          finalOptions.saturation = finalOptions.saturation * (f.saturation || 1);
+          finalOptions.grayscale = finalOptions.grayscale || f.grayscale;
+          finalOptions.effect = f.effect;
+        }
+      }
+
+      const targetW = dimensions.width > 0 ? dimensions.width : 1080;
+      const targetH = dimensions.height > 0 ? dimensions.height : 1080;
+      const ratio = targetW / targetH;
+      const maxDim = 800;
+      let pW = targetW;
+      let pH = targetH;
+      if (pW > maxDim || pH > maxDim) {
+        if (pW > pH) {
+          pW = maxDim;
+          pH = maxDim / ratio;
+        } else {
+          pH = maxDim;
+          pW = maxDim * ratio;
+        }
+      }
+
+      finalOptions.jsImgW = pW;
+      finalOptions.jsImgH = pH;
+      finalOptions.isLivePreview = true;
+
+      editImage(item.uri, finalOptions)
+        .then(uri => {
+          setLivePreviewUris(prev => ({ ...prev, [item.id]: uri }));
+        })
+        .catch(err => {
+          console.warn('Live preview failed', err);
+        });
+    }, 200);
+
+    return () => {
+      if (previewDebounceRef.current) clearTimeout(previewDebounceRef.current);
+    };
+  }, [imageOptions.brightness, imageOptions.contrast, imageOptions.saturation, imageOptions.grayscale, activeFilter, item.id, item.uri, item.type, dimensions.width, dimensions.height]);
+
   const handleSetRatio = (ratio: number | 'custom' | null) => {
     pushToHistory();
     setCropRatio(ratio);
@@ -1725,10 +1835,17 @@ export function EditorScreen({
         }
 
         if (edits) {
-          const opts = i === activeIndex ? activeOptions : buildOptionsForItem(targetItem, edits);
+          let finalOpts = i === activeIndex ? { ...activeOptions } : buildOptionsForItem(targetItem, edits);
+
+          if (edits.imageOptions.frame && FRAME_IMAGES[edits.imageOptions.frame]) {
+            const source = Image.resolveAssetSource(FRAME_IMAGES[edits.imageOptions.frame]);
+            if (source && source.uri) {
+              finalOpts.frameUri = source.uri;
+            }
+          }
 
           if (targetItem.type === 'image') {
-            let outUri = await editImage(targetItem.uri, opts);
+            let outUri = await editImage(targetItem.uri, finalOpts);
             if (selectedMusic) {
               outUri = await trimVideo(outUri, {
                 isImage: true,
@@ -1766,7 +1883,7 @@ export function EditorScreen({
               endMs: safeEndMs,
               mute: edits.isMuted,
               ...(selectedMusic?.url ? { musicUri: selectedMusic.url, musicOffsetMs: cumulativeMusicOffsetMs } : {}),
-              ...opts,
+              ...finalOpts,
             });
 
 
@@ -1877,6 +1994,9 @@ export function EditorScreen({
         cropOffset: { x: 0, y: 0 },
         zoomScale: 1,
         straightenAngle: 0,
+        stickers: [],
+        captions: [],
+        activeEffect: 'none',
       };
 
     const frameConfig = (FRAME_CONFIGS as any)[edits.imageOptions.frame || ''] || { scale: 1, offsetY: 0 };
@@ -1922,7 +2042,7 @@ export function EditorScreen({
         >
           {cardItem.type === 'image' ? (
             <Image
-              source={{ uri: cardItem.uri }}
+              source={{ uri: isActive && livePreviewUris[cardItem.id] ? livePreviewUris[cardItem.id] : cardItem.uri }}
               style={[
                 styles.preview,
                 {
@@ -1957,7 +2077,7 @@ export function EditorScreen({
           )}
 
           {/* Frame Overlay */}
-          {edits.imageOptions.frame && FRAME_IMAGES[edits.imageOptions.frame] && (
+          {!!edits.imageOptions.frame && FRAME_IMAGES[edits.imageOptions.frame] && (
             <View
               style={[StyleSheet.absoluteFill, { zIndex: 10, justifyContent: 'center', alignItems: 'center' }]}
               pointerEvents="none"
@@ -1971,30 +2091,34 @@ export function EditorScreen({
           )}
 
           {/* Color Filter Overlay */}
-          <View
-            pointerEvents="none"
-            style={[
-              StyleSheet.absoluteFill,
-              {
-                backgroundColor: getPreviewOverlayColor(edits.activeFilter),
-                opacity: getPreviewOverlayOpacity(edits.activeFilter),
-                zIndex: 8,
-              },
-            ]}
-          />
+          {(!isActive || !livePreviewUris[cardItem.id] || cardItem.type === 'video') && (
+            <View
+              pointerEvents="none"
+              style={[
+                StyleSheet.absoluteFill,
+                {
+                  backgroundColor: getPreviewOverlayColor(edits.activeFilter),
+                  opacity: getPreviewOverlayOpacity(edits.activeFilter),
+                  zIndex: 8,
+                },
+              ]}
+            />
+          )}
 
           {/* Brightness Overlay */}
-          <View
-            pointerEvents="none"
-            style={[
-              StyleSheet.absoluteFill,
-              {
-                backgroundColor: (edits.imageOptions.brightness ?? 0) > 0 ? '#fff' : '#000',
-                opacity: Math.min(0.6, Math.abs(edits.imageOptions.brightness ?? 0) * 0.5),
-                zIndex: 9,
-              },
-            ]}
-          />
+          {(!isActive || !livePreviewUris[cardItem.id] || cardItem.type === 'video') && (
+            <View
+              pointerEvents="none"
+              style={[
+                StyleSheet.absoluteFill,
+                {
+                  backgroundColor: (edits.imageOptions.brightness ?? 0) > 0 ? '#fff' : '#000',
+                  opacity: Math.min(0.6, Math.abs(edits.imageOptions.brightness ?? 0) * 0.5),
+                  zIndex: 9,
+                },
+              ]}
+            />
+          )}
 
           {/* Text Overlays */}
           {isActive && overlays.map((overlay) => {
@@ -2038,7 +2162,7 @@ export function EditorScreen({
           {isActive && stickers.map(s => (
             <View
               key={s.id}
-              style={{ position: 'absolute', left: s.x, top: s.y, zIndex: 25 }}
+              style={{ position: 'absolute', left: s.x, top: s.y, zIndex: 25, elevation: 25 }}
               pointerEvents="box-none"
             >
               <Pressable onLongPress={() => removeSticker(s.id)}>
@@ -2053,7 +2177,7 @@ export function EditorScreen({
             return (
               <View
                 key={c.id}
-                style={{ position: 'absolute', left: c.x, top: c.y, zIndex: 26, maxWidth: 220 }}
+                style={{ position: 'absolute', left: c.x, top: c.y, zIndex: 26, elevation: 26, maxWidth: 220 }}
                 pointerEvents="box-none"
               >
                 <Pressable onLongPress={() => removeCaption(c.id)}>
@@ -2079,6 +2203,9 @@ export function EditorScreen({
   const videoAspect = typeof cropRatio === 'number' ? cropRatio : (dimensions.width / (dimensions.height || 1));
 
   const carouselHeight = showMusicModal ? 280 : 380;
+
+  mutableCallbacks.current.save = saveEditsForIndex;
+  mutableCallbacks.current.load = loadEditsForIndex;
 
   return (
     <View style={styles.container}>
@@ -2161,7 +2288,7 @@ export function EditorScreen({
                 />
 
                 {/* Frame/Overlay Overlay */}
-                {imageOptions.frame && FRAME_IMAGES[imageOptions.frame] && (
+                {!!imageOptions.frame && FRAME_IMAGES[imageOptions.frame] && (
                   <View
                     style={[StyleSheet.absoluteFill, { zIndex: 10, justifyContent: 'center', alignItems: 'center' }]}
                     pointerEvents="none"
@@ -2766,7 +2893,8 @@ export function EditorScreen({
                   paddingHorizontal: (SCREEN_WIDTH - CARD_WIDTH) / 2 - CARD_MARGIN,
                   alignItems: 'center',
                 }}
-                onMomentumScrollEnd={handleScrollEnd}
+                onViewableItemsChanged={onViewableItemsChangedRef.current}
+                viewabilityConfig={viewabilityConfigRef.current}
                 renderItem={renderCard}
               />
             </View>
@@ -3331,8 +3459,11 @@ export function EditorScreen({
                   }
                   isNewOverlay.current = false;
                   originalOverlayBackup.current = null;
-                  setEditingTextId(null);
-                  setNewText('');
+                  Keyboard.dismiss();
+                  setTimeout(() => {
+                    setEditingTextId(null);
+                    setNewText('');
+                  }, 50);
                 }}
                 style={styles.modalBtn}
               >
@@ -3349,8 +3480,11 @@ export function EditorScreen({
                   }
                   isNewOverlay.current = false;
                   originalOverlayBackup.current = null;
-                  setEditingTextId(null);
-                  setNewText('');
+                  Keyboard.dismiss();
+                  setTimeout(() => {
+                    setEditingTextId(null);
+                    setNewText('');
+                  }, 50);
                 }}
                 style={[styles.modalBtn, styles.modalBtnPrimary]}
               >
@@ -4090,6 +4224,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     padding: 8,
     zIndex: 30,
+    elevation: 30,
   },
   textOverlay: {
     fontWeight: '700',

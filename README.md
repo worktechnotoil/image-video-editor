@@ -10,6 +10,11 @@ A high-performance, feature-rich React Native image and video editor. This libra
 * 📦 **Modular Export**: Triggers callbacks with local filesystem URIs suitable for server uploads.
 * 📱 **Multi-Select & Swiping**: Select up to 5 items simultaneously and edit them smoothly via horizontal swiping. UI state and trimming configurations perfectly sync across items.
 
+### Recent Updates (v0.1.11)
+* **Performance & Stability**: Fixed fatal UI thread crashes (`Text strings must be rendered within a <Text> component`) when transitioning to the editor screen with empty overlay states.
+* **Native Overlays**: Improved native resolution of bundled React Native image assets for reliable photo frame rendering across all Android versions.
+* **FFmpeg Enhancements**: Optimised FFmpeg rendering pipelines for better memory usage and resolved codec dependency failures on Android.
+
 ---
 
 ## Installation

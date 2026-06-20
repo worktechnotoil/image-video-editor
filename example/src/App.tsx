@@ -60,7 +60,7 @@ export default function App() {
           headerTitle="New post"
           cameraModes={['POST', 'STORY', 'REEL']}
           defaultCameraMode="REEL"
-          maxSelection={3}
+          maxSelection={5}
           aspectRatio="4:5"
           mediaType="any"
           mediaTabs={['GALLERY', 'PHOTO', 'VIDEO']}
@@ -139,7 +139,7 @@ export default function App() {
             <Pressable style={styles.modalCloseBtn} onPress={() => setPreviewItem(null)}>
               <Text style={styles.modalCloseText}>Close Preview</Text>
             </Pressable>
-            
+
             {previewItem && (
               <View style={styles.modalContent}>
                 {previewItem.type === 'video' ? (
