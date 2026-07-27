@@ -4,6 +4,7 @@
   "description": "A high-performance React Native image and video editor featuring video trimming, filters, photo overlay frames, and camera/gallery integration.",
   "main": "lib/commonjs/index.js",
   "module": "lib/module/index.js",
+  "source": "src/index.tsx",
   "types": "lib/typescript/src/index.d.ts",
   "exports": {
     ".": {

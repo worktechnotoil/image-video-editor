@@ -8,6 +8,7 @@ export interface MusicTrack {
   duration: string;
   cover: string;
   isCustom?: boolean;
+  category?: string;
 }
 
 export type MediaItem = {

@@ -37,6 +37,11 @@ export interface VideoEditorProps {
    * Maximum video duration allowed (in milliseconds).
    */
   maxVideoDurationMs?: number;
+  /**
+   * Maximum video duration allowed specifically for STORY mode (in milliseconds).
+   * Overrides maxVideoDurationMs when camera is in STORY mode.
+   */
+  maxStoryDurationMs?: number;
   /** Filter the media type that can be picked. Default: 'any' */
   mediaType?: 'photo' | 'video' | 'any';
   /** Control which tabs are shown in the picker. Default: ['GALLERY', 'PHOTO', 'VIDEO'] */
@@ -55,10 +60,11 @@ export default function VideoEditor({
   maxSelection = 1,
   aspectRatio = 'free',
   maxVideoDurationMs,
+  maxStoryDurationMs,
   mediaType = 'any',
   mediaTabs = ['GALLERY', 'PHOTO', 'VIDEO'],
 }: VideoEditorProps) {
-  const clampedMax = Math.min(5, Math.max(1, maxSelection));
+  const clampedMax = Math.max(1, maxSelection);
   const isDarkMode = useColorScheme() === 'dark';
   const [screen, setScreen] = useState<'pick' | 'editor' | 'crop' | 'export'>('pick');
   const [items, setItems] = useState<MediaItem[]>([]);
@@ -114,6 +120,8 @@ export default function VideoEditor({
             defaultCameraMode={defaultCameraMode}
             maxSelection={clampedMax}
             aspectRatio={aspectRatio}
+            maxVideoDurationMs={maxVideoDurationMs}
+            maxStoryDurationMs={maxStoryDurationMs}
             onCameraModeChange={(mode) => {
               setSelectedCameraMode(mode);
             }}
@@ -173,6 +181,8 @@ export default function VideoEditor({
             screen !== 'editor' && { position: 'absolute', width: '100%', height: '100%', opacity: 0, pointerEvents: 'none', zIndex: -1 }
           ]}>
              <EditorScreen 
+            key={items.map(i => i.id + '_' + (i.uri || '')).join(',')}
+            isActive={screen === 'editor'}
             items={items}
             initialIndex={Math.max(0, items.findIndex(it => it.id === current.id))}
             maxVideoDurationMs={maxVideoDurationMs}

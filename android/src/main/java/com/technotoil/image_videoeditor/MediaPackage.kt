@@ -13,14 +13,16 @@ class MediaPackage : ReactPackage {
       MediaLibraryModule(reactContext),
       MediaPlayerModule(reactContext),
       FrameGrabberModule(reactContext),
-      RNCameraModule(reactContext)
+      RNCameraModule(reactContext),
+      com.technotoil.image_videoeditor.camerafilter.CameraFilterModule(reactContext)
     )
   }
 
   override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> {
     return listOf(
       RNVideoPreviewManager(reactContext),
-      RNCameraViewManager(reactContext)
+      RNCameraViewManager(reactContext),
+      com.technotoil.image_videoeditor.camerafilter.CameraFilterViewManager()
     )
   }
 }

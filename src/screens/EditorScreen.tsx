@@ -15,6 +15,7 @@ import {
   FlatList,
   ActivityIndicator,
   Keyboard,
+  Animated,
 } from 'react-native';
 import { editImage, trimVideo } from '../native/MediaEditor';
 import { captureFrame } from '../native/FrameGrabber';
@@ -27,7 +28,7 @@ import type { ImageEditOptions, MediaItem, MusicTrack } from '../types';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SCREEN_HEIGHT = Dimensions.get('window').height;
-const TIMELINE_WIDTH = SCREEN_WIDTH - 40;
+const MIN_TIMELINE_WIDTH = SCREEN_WIDTH - 40;
 const HANDLE_SIZE = 24;
 const CARD_WIDTH = SCREEN_WIDTH * 0.76;
 const CARD_MARGIN = 10;
@@ -37,23 +38,17 @@ const SNAP_INTERVAL = CARD_WIDTH + CARD_MARGIN * 2;
 const FRAME_IMAGES: Record<string, any> = {
   floral_gold: require('../assets/frames/floral_gold.png'),
   film_vintage: require('../assets/frames/film_vintage.png'),
-  minimal_double: require('../assets/frames/minimal_double.png'),
-  polaroid_white: require('../assets/frames/polaroid_white.png'),
   watercolor_floral: require('../assets/frames/watercolor_floral.png'),
 };
 
 const FRAME_CONFIGS: Record<string, { scale: number; offsetY?: number }> = {
   floral_gold: { scale: 0.82 },
   film_vintage: { scale: 0.85 },
-  minimal_double: { scale: 0.92 },
-  polaroid_white: { scale: 0.72, offsetY: -0.05 },
   watercolor_floral: { scale: 0.78 },
 };
 const FRAME_LIST: { key: string; label: string }[] = [
   { key: 'floral_gold', label: 'Gold Floral' },
   { key: 'film_vintage', label: 'Film' },
-  { key: 'minimal_double', label: 'Minimal' },
-  { key: 'polaroid_white', label: 'Polaroid' },
   { key: 'watercolor_floral', label: 'Watercolor' },
 ];
 const DUMMY_MUSIC_LIST: MusicTrack[] = [
@@ -196,6 +191,7 @@ export function EditorScreen({
   onOpenCrop,
   musicList,
   maxVideoDurationMs,
+  isActive: screenIsActive = true,
 }: {
   items: MediaItem[];
   initialIndex?: number;
@@ -204,6 +200,7 @@ export function EditorScreen({
   onOpenCrop: (item: MediaItem) => void;
   musicList?: MusicTrack[];
   maxVideoDurationMs?: number;
+  isActive?: boolean;
 }) {
   const [activeIndex, setActiveIndex] = useState(initialIndex);
   const currentItem = items[activeIndex] || items[0];
@@ -229,6 +226,28 @@ export function EditorScreen({
     const end = item.durationMs || 10000;
     return maxVideoDurationMs ? Math.min(end, maxVideoDurationMs) : end;
   });
+
+  const [timelineWidth, setTimelineWidth] = useState(MIN_TIMELINE_WIDTH);
+  const timelineWidthRef = useRef(MIN_TIMELINE_WIDTH);
+  useEffect(() => {
+    if (item.type === 'video') {
+      const dur = item.durationMs || 10000;
+      let targetWidth = MIN_TIMELINE_WIDTH;
+      if (dur > 30000) {
+        if (dur <= 120000) {
+          // Linear scaling up to 2 minutes
+          targetWidth = (dur / 30000) * MIN_TIMELINE_WIDTH;
+        } else {
+          // Logarithmic scaling for videos longer than 2 minutes to keep expanding dynamically
+          const baseWidth = 4 * MIN_TIMELINE_WIDTH;
+          const extraDur = dur - 120000;
+          targetWidth = baseWidth + Math.log2(1 + extraDur / 60000) * MIN_TIMELINE_WIDTH;
+        }
+      }
+      setTimelineWidth(targetWidth);
+      timelineWidthRef.current = targetWidth;
+    }
+  }, [item.type, item.durationMs]);
 
   useEffect(() => {
     setThumbnails([]);
@@ -445,50 +464,148 @@ export function EditorScreen({
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
+    setIsReady(false);
     const timer = setTimeout(() => setIsReady(true), 350);
     return () => clearTimeout(timer);
-  }, []);
+  }, [item.id, item.uri]);
   const resolvedMusicList = musicList || [];
 
   const [selectedMusic, setSelectedMusic] = useState<MusicTrack | null>(null);
   const [musicPaused, setMusicPaused] = useState(false);
+
+  useEffect(() => {
+    if (!screenIsActive) {
+      setVideoPaused(true);
+      setMusicPaused(true);
+    }
+  }, [screenIsActive]);
   const [showMusicModal, setShowMusicModal] = useState(false);
+  const [showAudioTrimmer, setShowAudioTrimmer] = useState(false);
+  const [musicTrimStartMs, setMusicTrimStartMs] = useState(0);
+  const [musicTrimDurationMs, setMusicTrimDurationMs] = useState(30000);
+  const [showDurationPicker, setShowDurationPicker] = useState(false);
+  const waveAnim = useRef(new Animated.Value(0)).current;
+  
+  const audioTrimAnim = useRef(new Animated.Value(0)).current;
+  const audioTrimOffsetRef = useRef(0);
+  
+  useEffect(() => {
+    const listenerId = audioTrimAnim.addListener(({ value }) => {
+      audioTrimOffsetRef.current = value;
+    });
+    return () => audioTrimAnim.removeListener(listenerId);
+  }, [audioTrimAnim]);
+
+  const musicPulseAnim = useRef(new Animated.Value(1)).current;
+  const audioTrimmerPanRef = useRef<any>({ startX: 0 });
+
+  const timelineDurationMs = useMemo(() => {
+    let total = 0;
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (i === activeIndex) {
+        total += Math.max(0, trimEnd - trimStart);
+      } else {
+        const edits = editsHistoryRef.current[it.id];
+        if (edits && edits.trimEnd !== undefined && edits.trimStart !== undefined) {
+          total += Math.max(0, edits.trimEnd - edits.trimStart);
+        } else {
+          total += it.durationMs || 10000;
+        }
+      }
+    }
+    if (maxVideoDurationMs && total > maxVideoDurationMs) return maxVideoDurationMs;
+    return total;
+  }, [items, maxVideoDurationMs, activeIndex, trimStart, trimEnd]);
+
+  // Dynamically calculate max drag offset and scrubber width based on track vs video duration
+  const TRACK_CONTAINER_WIDTH = Dimensions.get('window').width - 32;
+  const trackTotalMs = useMemo(() => {
+    if (!selectedMusic?.duration) return 60000;
+    const parts = selectedMusic.duration.split(':');
+    return (parseInt(parts[0]) * 60 + parseInt(parts[1])) * 1000;
+  }, [selectedMusic]);
+  
+  const activeTrimWindowMs = Math.min(musicTrimDurationMs, trackTotalMs);
+  
+  // Scrubber takes up ~75% of the screen to leave room for context
+  const SCRUBBER_FIXED_WIDTH = TRACK_CONTAINER_WIDTH * 0.75;
+  const PIXELS_PER_SEC = SCRUBBER_FIXED_WIDTH / (Math.max(1, activeTrimWindowMs) / 1000);
+  
+  const scrubberWidth = SCRUBBER_FIXED_WIDTH;
+  const trackVisualWidth = (trackTotalMs / 1000) * PIXELS_PER_SEC;
+  const maxTrimOffset = Math.max(0, trackVisualWidth - scrubberWidth);
+  const maxTrimOffsetRef = useRef(maxTrimOffset);
+  const scrubberLeft = (TRACK_CONTAINER_WIDTH - scrubberWidth) / 2;
+  
+  useEffect(() => {
+    maxTrimOffsetRef.current = maxTrimOffset;
+  }, [maxTrimOffset]);
+
+  const audioTrimmerPan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onPanResponderMove: (e, gestureState) => {
+        let newOffset = audioTrimmerPanRef.current.startX - gestureState.dx;
+        if (newOffset < 0) newOffset = 0;
+        if (newOffset > maxTrimOffsetRef.current) newOffset = maxTrimOffsetRef.current;
+        audioTrimAnim.setValue(newOffset);
+      },
+      onPanResponderGrant: () => {
+        audioTrimmerPanRef.current.startX = audioTrimOffsetRef.current;
+      },
+    })
+  ).current;
+
+  useEffect(() => {
+    if (selectedMusic && !musicPaused && showAudioTrimmer) {
+      Animated.loop(
+        Animated.timing(waveAnim, { toValue: 1, duration: 800, useNativeDriver: false })
+      ).start();
+    } else {
+      waveAnim.stopAnimation();
+    }
+  }, [selectedMusic, musicPaused, showAudioTrimmer]);
+
+  useEffect(() => {
+    if (selectedMusic && !musicPaused) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(musicPulseAnim, { toValue: 1.3, duration: 400, useNativeDriver: true }),
+          Animated.timing(musicPulseAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
+        ])
+      ).start();
+    } else {
+      musicPulseAnim.stopAnimation();
+      musicPulseAnim.setValue(1);
+    }
+  }, [selectedMusic, musicPaused]);
+
   const [musicSearchQuery, setMusicSearchQuery] = useState('');
   const [activeMusicTab, setActiveMusicTab] = useState<'for_you' | 'trending' | 'saved' | 'original' | 'custom'>('trending');
 
   const filteredMusicList = useMemo(() => {
     let list = resolvedMusicList;
-    const hasCustomTracks = resolvedMusicList.some(track => track.isCustom);
+    const hasCategories = resolvedMusicList.some(track => !!track.category);
 
-    if (musicList) {
-      // If custom musicList is passed as a prop, keep it clean
-      if (activeMusicTab === 'trending') {
-        list = hasCustomTracks ? resolvedMusicList.filter(track => !track.isCustom) : resolvedMusicList;
-      } else if (activeMusicTab === 'for_you') {
-        list = hasCustomTracks ? resolvedMusicList.filter(track => !track.isCustom) : resolvedMusicList;
-      } else if (activeMusicTab === 'saved') {
-        const nonCustom = hasCustomTracks ? resolvedMusicList.filter(track => !track.isCustom) : resolvedMusicList;
-        list = nonCustom.slice(0, Math.min(nonCustom.length, 3));
-      } else if (activeMusicTab === 'original') {
-        list = resolvedMusicList.filter(track => track.title.toLowerCase().includes('original') || track.artist.toLowerCase().includes('original'));
-      } else if (activeMusicTab === 'custom') {
-        list = hasCustomTracks ? resolvedMusicList.filter(track => track.isCustom) : resolvedMusicList;
-      }
+    if (hasCategories) {
+      list = resolvedMusicList.filter(track => track.category === activeMusicTab);
     } else {
-      // Fallback to DUMMY_MUSIC_LIST with mock slicing
+      // Legacy fallback logic
+      const hasCustomTracks = resolvedMusicList.some(track => track.isCustom);
       if (activeMusicTab === 'trending') {
         const nonCustom = resolvedMusicList.filter(track => !track.isCustom);
-        list = nonCustom.slice(4, 10);
+        list = nonCustom.length > 4 ? nonCustom.slice(4, 10) : nonCustom;
       } else if (activeMusicTab === 'for_you') {
         const nonCustom = resolvedMusicList.filter(track => !track.isCustom);
         list = nonCustom.slice(0, 4);
       } else if (activeMusicTab === 'saved') {
         const nonCustom = resolvedMusicList.filter(track => !track.isCustom);
-        list = [nonCustom[1], nonCustom[3], nonCustom[5]];
+        list = [nonCustom[1], nonCustom[3], nonCustom[5]].filter(Boolean);
       } else if (activeMusicTab === 'original') {
         list = resolvedMusicList.filter(track => track.title.toLowerCase().includes('original') || track.artist.toLowerCase().includes('original') || track.id === '5');
       } else if (activeMusicTab === 'custom') {
-        list = resolvedMusicList.filter(track => track.isCustom);
+        list = hasCustomTracks ? resolvedMusicList.filter(track => track.isCustom) : [];
       }
     }
 
@@ -1179,7 +1296,7 @@ export function EditorScreen({
   const handleTimelineScroll = (e: any) => {
     if (isUserScrolling.current) {
       const x = e.nativeEvent.contentOffset.x;
-      const time = (x / TIMELINE_WIDTH) * duration;
+      const time = (x / timelineWidthRef.current) * duration;
       const clampedTime = Math.max(trimStart, Math.min(trimEnd, time));
       setCurrentTimeMs(clampedTime);
       throttledSeek(clampedTime);
@@ -1204,15 +1321,15 @@ export function EditorScreen({
     return () => clearInterval(interval);
   }, [videoPaused, duration, item.type, isEditingVideo]);
 
-  const startX = useRef((trimStart / duration) * TIMELINE_WIDTH);
-  const endX = useRef((trimEnd / duration) * TIMELINE_WIDTH);
+  const startX = useRef((trimStart / duration) * timelineWidthRef.current);
+  const endX = useRef((trimEnd / duration) * timelineWidthRef.current);
 
   useEffect(() => {
-    startX.current = (trimStart / duration) * TIMELINE_WIDTH;
+    startX.current = (trimStart / duration) * timelineWidthRef.current;
   }, [trimStart, duration]);
 
   useEffect(() => {
-    endX.current = (trimEnd / duration) * TIMELINE_WIDTH;
+    endX.current = (trimEnd / duration) * timelineWidthRef.current;
   }, [trimEnd, duration]);
 
   useEffect(() => {
@@ -1264,12 +1381,12 @@ export function EditorScreen({
       },
       onPanResponderMove: (_, gesture) => {
         let newX = Math.max(0, Math.min(endX.current - 32, startPanOffset.current + gesture.dx));
-        let newTime = (newX / TIMELINE_WIDTH) * durationRef.current;
+        let newTime = (newX / timelineWidthRef.current) * durationRef.current;
 
-        const currentTrimEnd = (endX.current / TIMELINE_WIDTH) * durationRef.current;
+        const currentTrimEnd = (endX.current / timelineWidthRef.current) * durationRef.current;
         if (maxVideoDurationMs && currentTrimEnd - newTime > maxVideoDurationMs) {
           newTime = currentTrimEnd - maxVideoDurationMs;
-          newX = (newTime / durationRef.current) * TIMELINE_WIDTH;
+          newX = (newTime / durationRef.current) * timelineWidthRef.current;
         }
 
         startX.current = newX;
@@ -1279,15 +1396,15 @@ export function EditorScreen({
       onPanResponderRelease: () => {
         isDraggingHandle.current = false;
         setScrollEnabled(true);
-        setTrimStart((startX.current / TIMELINE_WIDTH) * durationRef.current);
-        setTrimEnd((endX.current / TIMELINE_WIDTH) * durationRef.current);
+        setTrimStart((startX.current / timelineWidthRef.current) * durationRef.current);
+        setTrimEnd((endX.current / timelineWidthRef.current) * durationRef.current);
         setSeekToMs(-1);
       },
       onPanResponderTerminate: () => {
         isDraggingHandle.current = false;
         setScrollEnabled(true);
-        setTrimStart((startX.current / TIMELINE_WIDTH) * durationRef.current);
-        setTrimEnd((endX.current / TIMELINE_WIDTH) * durationRef.current);
+        setTrimStart((startX.current / timelineWidthRef.current) * durationRef.current);
+        setTrimEnd((endX.current / timelineWidthRef.current) * durationRef.current);
         setSeekToMs(-1);
       }
     })
@@ -1319,30 +1436,30 @@ export function EditorScreen({
           newStartX = 0;
           newEndX = windowWidth;
         }
-        if (newEndX > TIMELINE_WIDTH) {
-          newEndX = TIMELINE_WIDTH;
-          newStartX = TIMELINE_WIDTH - windowWidth;
+        if (newEndX > timelineWidthRef.current) {
+          newEndX = timelineWidthRef.current;
+          newStartX = timelineWidthRef.current - windowWidth;
         }
 
         startX.current = newStartX;
         endX.current = newEndX;
 
-        const newStartTime = (newStartX / TIMELINE_WIDTH) * durationRef.current;
+        const newStartTime = (newStartX / timelineWidthRef.current) * durationRef.current;
         updateNativeRefs(newStartX, newEndX);
         throttledSeek(newStartTime);
       },
       onPanResponderRelease: () => {
         isDraggingHandle.current = false;
         setScrollEnabled(true);
-        setTrimStart((startX.current / TIMELINE_WIDTH) * durationRef.current);
-        setTrimEnd((endX.current / TIMELINE_WIDTH) * durationRef.current);
+        setTrimStart((startX.current / timelineWidthRef.current) * durationRef.current);
+        setTrimEnd((endX.current / timelineWidthRef.current) * durationRef.current);
         setSeekToMs(-1);
       },
       onPanResponderTerminate: () => {
         isDraggingHandle.current = false;
         setScrollEnabled(true);
-        setTrimStart((startX.current / TIMELINE_WIDTH) * durationRef.current);
-        setTrimEnd((endX.current / TIMELINE_WIDTH) * durationRef.current);
+        setTrimStart((startX.current / timelineWidthRef.current) * durationRef.current);
+        setTrimEnd((endX.current / timelineWidthRef.current) * durationRef.current);
         setSeekToMs(-1);
       }
     })
@@ -1362,13 +1479,13 @@ export function EditorScreen({
         setScrollEnabled(false);
       },
       onPanResponderMove: (_, gesture) => {
-        let newX = Math.min(TIMELINE_WIDTH, Math.max(startX.current + 32, endPanOffset.current + gesture.dx));
-        let newTime = (newX / TIMELINE_WIDTH) * durationRef.current;
+        let newX = Math.min(timelineWidthRef.current, Math.max(startX.current + 32, endPanOffset.current + gesture.dx));
+        let newTime = (newX / timelineWidthRef.current) * durationRef.current;
 
-        const currentTrimStart = (startX.current / TIMELINE_WIDTH) * durationRef.current;
+        const currentTrimStart = (startX.current / timelineWidthRef.current) * durationRef.current;
         if (maxVideoDurationMs && newTime - currentTrimStart > maxVideoDurationMs) {
           newTime = currentTrimStart + maxVideoDurationMs;
-          newX = (newTime / durationRef.current) * TIMELINE_WIDTH;
+          newX = (newTime / durationRef.current) * timelineWidthRef.current;
         }
 
         endX.current = newX;
@@ -1378,15 +1495,15 @@ export function EditorScreen({
       onPanResponderRelease: () => {
         isDraggingHandle.current = false;
         setScrollEnabled(true);
-        setTrimStart((startX.current / TIMELINE_WIDTH) * durationRef.current);
-        setTrimEnd((endX.current / TIMELINE_WIDTH) * durationRef.current);
+        setTrimStart((startX.current / timelineWidthRef.current) * durationRef.current);
+        setTrimEnd((endX.current / timelineWidthRef.current) * durationRef.current);
         setSeekToMs(-1);
       },
       onPanResponderTerminate: () => {
         isDraggingHandle.current = false;
         setScrollEnabled(true);
-        setTrimStart((startX.current / TIMELINE_WIDTH) * durationRef.current);
-        setTrimEnd((endX.current / TIMELINE_WIDTH) * durationRef.current);
+        setTrimStart((startX.current / timelineWidthRef.current) * durationRef.current);
+        setTrimEnd((endX.current / timelineWidthRef.current) * durationRef.current);
         setSeekToMs(-1);
       }
     })
@@ -1764,6 +1881,7 @@ export function EditorScreen({
   const handleDownload = async () => {
     try {
       setSaving(true);
+      await new Promise<void>(resolve => setTimeout(resolve, 100));
       let exportUri = item.uri;
       if (item.type === 'image') {
         exportUri = await editImage(item.uri, activeOptions);
@@ -1771,6 +1889,7 @@ export function EditorScreen({
           exportUri = await trimVideo(exportUri, {
             isImage: true,
             musicUri: selectedMusic.url,
+            musicOffsetMs: musicTrimStartMs,
             rotateDegrees: 0,
             flipX: false,
             flipY: false,
@@ -1794,7 +1913,7 @@ export function EditorScreen({
           startMs: safeStartMs,
           endMs: safeEndMs,
           mute: isMuted,
-          ...(selectedMusic?.url ? { musicUri: selectedMusic.url } : {}),
+          ...(selectedMusic?.url ? { musicUri: selectedMusic.url, musicOffsetMs: musicTrimStartMs } : {}),
           ...activeOptions,
         });
       }
@@ -1809,11 +1928,14 @@ export function EditorScreen({
 
   const handleSaveAll = async () => {
     try {
+      setVideoPaused(true);
+      setMusicPaused(true);
       setSaving(true);
+      await new Promise<void>(resolve => setTimeout(resolve, 100));
       saveEditsForIndex(activeIndex);
 
       const updatedItems = [...items];
-      let cumulativeMusicOffsetMs = 0;
+      let cumulativeMusicOffsetMs = musicTrimStartMs;
 
       for (let i = 0; i < items.length; i++) {
         const targetItem = items[i];
@@ -2041,28 +2163,37 @@ export function EditorScreen({
           {...(isActive && panel === 'transform' && cardItem.type === 'image' ? cropPan.panHandlers : {})}
         >
           {cardItem.type === 'image' ? (
-            <Image
-              source={{ uri: isActive && livePreviewUris[cardItem.id] ? livePreviewUris[cardItem.id] : cardItem.uri }}
-              style={[
-                styles.preview,
-                {
-                  transform: [
-                    { scale: currentScale },
-                    { translateX: edits.cropOffset.x },
-                    { translateY: edits.cropOffset.y + currentYOffset },
-                    { scale: edits.zoomScale },
-                    ...cardTransform
-                  ]
-                }
-              ]}
-              resizeMode={edits.cropRatio ? "cover" : "contain"}
-            />
+            <Pressable onPress={() => isActive && setVideoPaused(v => !v)}>
+              <Image
+                source={{ uri: isActive && livePreviewUris[cardItem.id] ? livePreviewUris[cardItem.id] : (cardItem.uri?.startsWith('/') ? 'file://' + cardItem.uri : cardItem.uri) }}
+                style={[
+                  styles.preview,
+                  {
+                    transform: [
+                      { scale: currentScale },
+                      { translateX: edits.cropOffset.x },
+                      { translateY: edits.cropOffset.y + currentYOffset },
+                      { scale: edits.zoomScale },
+                      ...cardTransform
+                    ]
+                  }
+                ]}
+                resizeMode={edits.cropRatio ? "cover" : "contain"}
+              />
+              {isActive && videoPaused && (
+                <View style={styles.previewOverlay}>
+                  <View style={styles.playPauseCircle}>
+                    <Ionicons name="play" size={22} color="#fff" />
+                  </View>
+                </View>
+              )}
+            </Pressable>
           ) : (
             <Pressable onPress={() => isActive && setVideoPaused(v => !v)} style={[styles.videoPreview, { transform: [{ scale: currentScale }, { translateX: edits.cropOffset.x }, { translateY: edits.cropOffset.y + currentYOffset }, { scale: edits.zoomScale }, ...cardTransform] }]}>
               <VideoPreview
                 uri={cardItem.uri}
-                paused={!isActive || videoPaused}
-                muted={isActive ? isMuted : true}
+                paused={!screenIsActive || !isActive || videoPaused}
+                muted={!screenIsActive || (selectedMusic ? true : isMuted)}
                 style={styles.previewContainerResized}
                 resizeMode={edits.cropRatio ? "cover" : "contain"}
               />
@@ -2212,10 +2343,12 @@ export function EditorScreen({
       {selectedMusic && (
         <Video
           source={{ uri: selectedMusic.url }}
-          paused={musicPaused || (item.type === 'video' ? videoPaused : false)}
+          paused={!screenIsActive || (showAudioTrimmer ? musicPaused : videoPaused)}
           repeat
-          muted={false}
-          style={{ width: 0, height: 0, position: 'absolute' }}
+          muted={!screenIsActive || isMuted}
+          volume={screenIsActive ? 1.0 : 0}
+          ignoreSilentSwitch="ignore"
+          style={{ width: 1, height: 1, opacity: 0, position: 'absolute' }}
         />
       )}
 
@@ -2259,33 +2392,42 @@ export function EditorScreen({
                   backgroundColor: '#000',
                 }}
               >
-                <VideoPreview
-                  uri={item.uri}
-                  paused={videoPaused}
-                  muted={isMuted}
-                  style={[
-                    styles.editModeVideo,
-                    {
-                      transform: [
-                        { scale: zoomScale },
-                        { translateX: cropOffset.x },
-                        { translateY: cropOffset.y }
-                      ]
-                    }
-                  ]}
-                  resizeMode={cropRatio ? "cover" : "contain"}
-                  trimStartMs={trimStart}
-                  trimEndMs={trimEnd}
-                  seekToMs={seekToMs}
-                  onChange={(e) => {
-                    const time = e.nativeEvent.currentTimeMs;
-                    setCurrentTimeMs(time);
-                    if (!isUserScrolling.current && !isDraggingHandle.current) {
-                      const x = (time / duration) * TIMELINE_WIDTH;
-                      timelineScrollRef.current?.scrollTo({ x, animated: false });
-                    }
-                  }}
-                />
+                {(() => {
+                  const frameConfig = (FRAME_CONFIGS as any)[imageOptions.frame || ''] || { scale: 1, offsetY: 0 };
+                  const currentScale = imageOptions.frame ? frameConfig.scale : 1;
+                  const currentYOffset = imageOptions.frame ? (frameConfig.offsetY || 0) * ((dimensions.height || 1000) / (dimensions.width || 1000) * SCREEN_WIDTH) : 0;
+                  
+                  return (
+                    <VideoPreview
+                      uri={item.uri}
+                      paused={!screenIsActive || videoPaused}
+                      muted={!screenIsActive || (selectedMusic ? true : isMuted)}
+                      style={[
+                        styles.editModeVideo,
+                        {
+                          transform: [
+                            { scale: currentScale },
+                            { translateX: cropOffset.x },
+                            { translateY: cropOffset.y + currentYOffset },
+                            { scale: zoomScale }
+                          ]
+                        }
+                      ]}
+                      resizeMode={cropRatio ? "cover" : "contain"}
+                      trimStartMs={trimStart}
+                      trimEndMs={trimEnd}
+                      seekToMs={seekToMs}
+                      onChange={(e) => {
+                        const time = e.nativeEvent.currentTimeMs;
+                        setCurrentTimeMs(time);
+                        if (!isUserScrolling.current && !isDraggingHandle.current) {
+                          const x = (time / duration) * timelineWidth;
+                          timelineScrollRef.current?.scrollTo({ x, animated: false });
+                        }
+                      }}
+                    />
+                  );
+                })()}
 
                 {/* Frame/Overlay Overlay */}
                 {!!imageOptions.frame && FRAME_IMAGES[imageOptions.frame] && (
@@ -2457,7 +2599,7 @@ export function EditorScreen({
                   paddingHorizontal: SCREEN_WIDTH / 2,
                 }}
               >
-                <View style={{ width: TIMELINE_WIDTH }}>
+                <View style={{ width: timelineWidth }}>
                   {/* Ruler */}
                   <View style={[styles.timelineRuler, { justifyContent: 'space-between' }]}>
                     <Text style={styles.timelineRulerText}>0s</Text>
@@ -2477,14 +2619,14 @@ export function EditorScreen({
                           // Pause video and seek to the tapped position
                           setVideoPaused(true);
                           timelineScrollRef.current?.scrollTo({ x: x - SCREEN_WIDTH / 2, animated: true });
-                          const time = (x / TIMELINE_WIDTH) * duration;
+                          const time = (x / timelineWidth) * duration;
                           const clampedTime = Math.max(trimStart, Math.min(trimEnd, time));
                           setCurrentTimeMs(clampedTime);
                           throttledSeek(clampedTime);
                         }}
                       >
                         {thumbnails.map((uri, idx) => (
-                          <Image key={idx} source={{ uri }} style={styles.filmstripImage} />
+                          <Image key={idx} source={{ uri }} style={[styles.filmstripImage, { width: timelineWidth / 10 }]} />
                         ))}
                         <View ref={leftOverlayRef} style={[styles.timelineOverlay, { left: 0, width: startX.current }]} />
                         <View ref={rightOverlayRef} style={[styles.timelineOverlay, { left: endX.current, right: 0 }]} />
@@ -2552,7 +2694,7 @@ export function EditorScreen({
 
             {/* Inline Panel Section — shows when filter/overlay/edit/transform is selected */}
             {(panel === 'filter' || panel === 'frame' || panel === 'edit' || panel === 'transform') && (
-              <View style={{ backgroundColor: '#111', maxHeight: 130, borderTopWidth: 1, borderTopColor: '#222' }}>
+              <View style={{ backgroundColor: '#111', maxHeight: 130, borderTopWidth: 1, borderTopColor: '#222' }} pointerEvents={saving ? 'none' : 'auto'}>
                 {panel === 'filter' && (
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 10, gap: 10 }}>
                     {['none', 'vivid', 'cool', 'warm', 'fade', 'mono', 'noir', 'chrome'].map((f) => (
@@ -2622,6 +2764,7 @@ export function EditorScreen({
                     <Pressable
                       style={{ alignItems: 'center', gap: 4 }}
                       onPress={() => adjustImage({ frame: '' })}
+                      disabled={saving}
                     >
                       <View style={{
                         width: 56, height: 56, borderRadius: 10, backgroundColor: '#333',
@@ -2635,7 +2778,7 @@ export function EditorScreen({
                     {FRAME_LIST.map((f) => {
                       const isActive = imageOptions.frame === f.key;
                       return (
-                        <Pressable key={f.key} onPress={() => adjustImage({ frame: f.key })} style={{ alignItems: 'center', gap: 4 }}>
+                        <Pressable key={f.key} onPress={() => adjustImage({ frame: f.key })} style={{ alignItems: 'center', gap: 4 }} disabled={saving}>
                           <View style={{
                             width: 56, height: 56, borderRadius: 10, backgroundColor: '#222',
                             borderWidth: isActive ? 2 : 0, borderColor: '#38bdf8',
@@ -2657,7 +2800,7 @@ export function EditorScreen({
             )}
 
             {/* Bottom Toolbar — 6 working tools */}
-            <View style={styles.bottomToolBarContainer}>
+            <View style={styles.bottomToolBarContainer} pointerEvents={saving ? 'none' : 'auto'}>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -2732,8 +2875,8 @@ export function EditorScreen({
               {!saving && isReady && (
                 <VideoPreview
                   uri={item.uri}
-                  paused={videoPaused}
-                  muted={isMuted}
+                  paused={!screenIsActive || videoPaused || saving}
+                  muted={!screenIsActive || (selectedMusic ? true : isMuted)}
                   style={[
                     styles.fullVideo,
                     {
@@ -2838,7 +2981,7 @@ export function EditorScreen({
                 </Pressable>
                 <Pressable style={styles.nextPillBtn} onPress={handleSaveAll} disabled={saving}>
                   {saving ? (
-                    <ActivityIndicator size="small" color="#fff" />
+                    <ActivityIndicator size="small" color="#000" />
                   ) : (
                     <Text style={styles.nextPillText}>Next ➔</Text>
                   )}
@@ -2900,15 +3043,32 @@ export function EditorScreen({
             </View>
 
             {selectedMusic && (
-              <Pressable
-                onPress={() => setShowMusicModal(true)}
-                style={styles.floatingMusicBadge}
-              >
-                <Text style={styles.floatingMusicBadgeText}>🎵 {selectedMusic.title} - {selectedMusic.artist}</Text>
-              </Pressable>
+              <View style={styles.floatingAudioPill}>
+                <Pressable
+                  style={styles.floatingAudioPillInner}
+                  onPress={() => setShowAudioTrimmer(true)}
+                >
+                  <Image source={{ uri: selectedMusic.cover }} style={styles.floatingAudioCover} />
+                  <Animated.View style={{ transform: [{ scale: musicPulseAnim }] }}>
+                    <Ionicons name="musical-notes" size={12} color="#fff" style={{ marginHorizontal: 6 }} />
+                  </Animated.View>
+                  <Text style={styles.floatingMusicBadgeText} numberOfLines={1}>
+                    {selectedMusic.title} - {selectedMusic.artist}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={styles.floatingAudioCloseBtn}
+                  onPress={() => {
+                    setSelectedMusic(null);
+                    setMusicPaused(true);
+                  }}
+                >
+                  <Ionicons name="close" size={16} color="#fff" />
+                </Pressable>
+              </View>
             )}
 
-            <View style={styles.editorPanel}>
+            <View style={styles.editorPanel} pointerEvents={saving ? 'none' : 'auto'}>
               {panel === 'filter' && (
                 <View style={styles.panelInner}>
                   <Text style={styles.panelTitle}>Filters</Text>
@@ -2964,7 +3124,7 @@ export function EditorScreen({
                   <View style={{ alignItems: 'center', marginBottom: 6 }}>
                     <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>
                       {(() => {
-                        const selMs = ((endX.current - startX.current) / TIMELINE_WIDTH) * duration;
+                        const selMs = ((endX.current - startX.current) / timelineWidth) * duration;
                         const totalSec = Math.floor(selMs / 1000);
                         return totalSec >= 60
                           ? `${Math.floor(totalSec / 60)}:${(totalSec % 60).toString().padStart(2, '0')} selected`
@@ -2972,7 +3132,13 @@ export function EditorScreen({
                       })()}
                     </Text>
                   </View>
-                  <View style={[styles.trimTimelineBox, { overflow: 'visible' }]}>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    scrollEnabled={scrollEnabled}
+                    contentContainerStyle={{ minWidth: '100%', justifyContent: 'center', paddingHorizontal: 20 }}
+                  >
+                    <View style={[styles.trimTimelineBox, { overflow: 'visible', width: timelineWidth }]}>
                     <View style={styles.filmstrip}>
                       {thumbnails.length === 0 ? (
                         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
@@ -2980,7 +3146,7 @@ export function EditorScreen({
                         </View>
                       ) : (
                         thumbnails.map((uri, idx) => (
-                          <Image key={idx} source={{ uri }} style={styles.filmstripImage} />
+                          <Image key={idx} source={{ uri }} style={[styles.filmstripImage, { width: timelineWidth / 10 }]} />
                         ))
                       )}
                       <View ref={leftOverlayRef} style={[styles.timelineOverlay, { left: 0, width: startX.current }]} />
@@ -3017,6 +3183,7 @@ export function EditorScreen({
                       <View style={styles.handleBarLine} />
                     </View>
                   </View>
+                  </ScrollView>
                 </View>
               )}
 
@@ -3027,6 +3194,7 @@ export function EditorScreen({
                     <Pressable
                       style={[styles.filterThumb, !imageOptions.frame && styles.filterThumbActive]}
                       onPress={() => adjustImage({ frame: undefined })}
+                      disabled={saving}
                     >
                       <View style={[styles.filterPreviewContainer, { backgroundColor: '#333', justifyContent: 'center', alignItems: 'center' }]}>
                         <Ionicons name="close" size={24} color="#fff" />
@@ -3040,6 +3208,7 @@ export function EditorScreen({
                           key={f.key}
                           style={[styles.filterThumb, isActive && styles.filterThumbActive]}
                           onPress={() => adjustImage({ frame: f.key })}
+                          disabled={saving}
                         >
                           <View style={styles.filterPreviewContainer}>
                             {FRAME_IMAGES[f.key] ? (
@@ -3391,20 +3560,171 @@ export function EditorScreen({
                     </Text>
                   </View>
                 </View>
+                
+                <Pressable
+                  onPress={() => setMusicPaused(!musicPaused)}
+                  style={styles.musicFooterControlBtn}
+                >
+                  <Ionicons name={musicPaused ? "play" : "pause"} size={20} color="#fff" />
+                </Pressable>
+
                 <Pressable
                   onPress={() => {
-                    setSelectedMusic(null);
-                    setMusicPaused(true);
-                    setIsMuted(false);
+                    setShowMusicModal(false);
+                    setShowAudioTrimmer(true);
                   }}
-                  style={styles.musicFooterRemoveBtn}
+                  style={[styles.musicFooterControlBtn, styles.musicFooterNextBtn]}
                 >
-                  <Text style={styles.musicFooterRemoveText}>Remove</Text>
+                  <Ionicons name="arrow-forward" size={20} color="#000" />
                 </Pressable>
               </View>
             )}
           </View>
         </Pressable>
+      </Modal>
+
+      <Modal visible={showAudioTrimmer} transparent animationType="slide">
+        <View style={styles.audioTrimmerOverlay}>
+          <View style={styles.audioTrimmerContent}>
+            {selectedMusic && (
+              <>
+                <Image source={{ uri: selectedMusic.cover }} style={styles.audioTrimmerCover} />
+                <Text style={styles.audioTrimmerTitle}>{selectedMusic.title}</Text>
+                <Text style={styles.audioTrimmerArtist}>{selectedMusic.artist}</Text>
+                
+                <View style={{ width: '100%', flexDirection: 'row', alignItems: 'center', marginBottom: 8, justifyContent: 'flex-start' }}>
+                  <Pressable onPress={() => setShowDurationPicker(true)}>
+                    <View style={{ backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 20, width: 36, height: 36, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                      <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>{Math.round(musicTrimDurationMs / 1000)}s</Text>
+                    </View>
+                  </Pressable>
+                  <View style={{ flex: 1, height: 2, backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 1 }} />
+                  <Pressable 
+                    onPress={() => setMusicPaused(!musicPaused)}
+                    style={{ marginLeft: 12, width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <Ionicons name={musicPaused ? "play" : "pause"} size={16} color="#fff" />
+                  </Pressable>
+                </View>
+                
+                <View style={[styles.audioTrimmerTrack, { overflow: 'hidden' }]} {...audioTrimmerPan.panHandlers}>
+                  {/* Sliding Audio Waveform Pattern */}
+                  <Animated.View style={{ 
+                    position: 'absolute', 
+                    left: scrubberLeft, 
+                    top: 0, 
+                    bottom: 0, 
+                    flexDirection: 'row', 
+                    alignItems: 'center', 
+                    width: trackVisualWidth,
+                    transform: [{ translateX: Animated.multiply(audioTrimAnim, -1) }] 
+                  }}>
+                    {Array.from({ length: Math.floor(trackVisualWidth / 6) }).map((_, i, arr) => {
+                      let color = '#8a3ab9'; // Purple
+                      const progress = i / arr.length;
+                      if (progress > 0.25) color = '#e95950'; // Pink
+                      if (progress > 0.5) color = '#fbad50'; // Orange
+                      if (progress > 0.75) color = '#fccc63'; // Yellow
+                      return (
+                        <View key={i} style={{ width: 3, marginHorizontal: 1.5, height: 10 + (Math.sin(i) * 20), backgroundColor: color, borderRadius: 2 }} />
+                      );
+                    })}
+                  </Animated.View>
+                  
+                  {/* Static Center Scrub Window */}
+                  <View
+                    pointerEvents="none"
+                    style={[
+                      styles.audioTrimmerSelection,
+                      { width: scrubberWidth, left: scrubberLeft, position: 'absolute', height: '100%' }
+                    ]}
+                  >
+                     <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4, justifyContent: 'space-between', overflow: 'hidden' }}>
+                        {Array.from({ length: Math.floor(scrubberWidth / 6) }).map((_, i) => (
+                          <Animated.View key={i} style={{ 
+                            width: 2, 
+                            height: waveAnim.interpolate({
+                              inputRange: [0, 0.5, 1],
+                              outputRange: [
+                                15 + (Math.cos(i) * 10), 
+                                25 + (Math.sin(i) * 15), 
+                                15 + (Math.cos(i) * 10)
+                              ]
+                            }), 
+                            backgroundColor: '#FFFFFF', 
+                            borderRadius: 1 
+                          }} />
+                        ))}
+                     </View>
+                  </View>
+                </View>
+
+                <View style={styles.audioTrimmerActions}>
+                  <Pressable onPress={() => { setShowAudioTrimmer(false); setSelectedMusic(null); setMusicPaused(true); }}>
+                    <Text style={styles.audioTrimmerActionText}>Cancel</Text>
+                  </Pressable>
+                  <Text style={styles.audioTrimmerActionText}>Audio</Text>
+                  <Pressable onPress={() => { 
+                    setShowAudioTrimmer(false); 
+                    setMusicPaused(false); 
+                    // Calculate start ms based on offset
+                    const progress = maxTrimOffset > 0 ? audioTrimOffsetRef.current / maxTrimOffset : 0;
+                    const maxStartMs = Math.max(0, trackTotalMs - activeTrimWindowMs);
+                    setMusicTrimStartMs(progress * maxStartMs);
+                  }}>
+                    <Text style={[styles.audioTrimmerActionText, styles.audioTrimmerDoneText]}>Done</Text>
+                  </Pressable>
+                </View>
+
+                {showDurationPicker && (
+                  <Modal visible={showDurationPicker} transparent animationType="slide">
+                    <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+                      <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 34, paddingTop: 12, width: '100%' }}>
+                        <View style={{ width: 40, height: 4, backgroundColor: '#ccc', borderRadius: 2, alignSelf: 'center', marginBottom: 16 }} />
+                        <Text style={{ color: '#000', fontSize: 18, fontWeight: '700', textAlign: 'center', marginBottom: 24 }}>
+                          Choose clip duration
+                        </Text>
+                        
+                        <View style={{ height: 250, width: '100%', marginBottom: 24 }}>
+                          <ScrollView contentContainerStyle={{ alignItems: 'center' }} showsVerticalScrollIndicator={false}>
+                            {Array.from({ length: Math.max(1, Math.floor(timelineDurationMs / 1000) - 2) }, (_, i) => (i + 3) * 1000).filter(s => s <= trackTotalMs).map((s) => {
+                              const isSelected = musicTrimDurationMs === s;
+                              return (
+                                <Pressable 
+                                  key={s} 
+                                  onPress={() => setMusicTrimDurationMs(s)}
+                                  style={{ 
+                                    paddingVertical: 12, 
+                                    width: '60%', 
+                                    alignItems: 'center',
+                                    borderTopWidth: isSelected ? 1 : 0,
+                                    borderBottomWidth: isSelected ? 1 : 0,
+                                    borderColor: '#000'
+                                  }}
+                                >
+                                  <Text style={{ color: isSelected ? '#000' : '#aaa', fontSize: 16, fontWeight: isSelected ? '600' : '400' }}>
+                                    {Math.round(s / 1000)} SECONDS
+                                  </Text>
+                                </Pressable>
+                              );
+                            })}
+                          </ScrollView>
+                        </View>
+                        
+                        <Pressable 
+                          style={{ backgroundColor: '#4C51F7', marginHorizontal: 24, paddingVertical: 16, borderRadius: 12, alignItems: 'center' }}
+                          onPress={() => setShowDurationPicker(false)}
+                        >
+                          <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>Done</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  </Modal>
+                )}
+              </>
+            )}
+          </View>
+        </View>
       </Modal>
 
       <Modal visible={!!editingTextId} transparent animationType="fade">
@@ -4034,7 +4354,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 4,
   },
   adjustSmallButtonText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  trimTimelineBox: { width: TIMELINE_WIDTH, alignSelf: 'center', marginTop: 10 },
+  trimTimelineBox: { alignSelf: 'center', marginTop: 10 },
   filmstrip: {
     width: '100%',
     height: 60,
@@ -4043,7 +4363,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     overflow: 'hidden',
   },
-  filmstripImage: { width: TIMELINE_WIDTH / 10, height: 60 },
+  filmstripImage: { height: 60 },
   timelineOverlay: {
     position: 'absolute',
     top: 0,
@@ -4368,22 +4688,47 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
-  floatingMusicBadge: {
+  floatingAudioPill: {
     position: 'absolute',
-    top: 20,
-    right: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    top: 50,
+    alignSelf: 'center',
+    backgroundColor: '#1E293B',
+    borderRadius: 24,
     flexDirection: 'row',
     alignItems: 'center',
+    padding: 4,
     zIndex: 30,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  floatingAudioPillInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingRight: 8,
+  },
+  floatingAudioCover: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
   },
   floatingMusicBadgeText: {
     color: '#FFF',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
+    maxWidth: 150,
+  },
+  floatingAudioCloseBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 6,
+    marginRight: 2,
   },
   musicModalOverlay: {
     flex: 1,
@@ -4566,16 +4911,82 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 1,
   },
-  musicFooterRemoveBtn: {
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 14,
+  musicFooterControlBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 12,
   },
-  musicFooterRemoveText: {
-    color: '#EF4444',
-    fontSize: 12,
+  musicFooterNextBtn: {
+    backgroundColor: '#FFFFFF',
+  },
+  audioTrimmerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    justifyContent: 'flex-end',
+  },
+  audioTrimmerContent: {
+    backgroundColor: '#12141C',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 24,
+    paddingHorizontal: 16,
+    paddingBottom: 32,
+    alignItems: 'center',
+  },
+  audioTrimmerCover: {
+    width: 80,
+    height: 80,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  audioTrimmerTitle: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  audioTrimmerArtist: {
+    color: '#8E93A2',
+    fontSize: 14,
+    marginBottom: 24,
+  },
+  audioTrimmerTrack: {
+    width: '100%',
+    height: 60,
+    backgroundColor: '#1E2436',
+    borderRadius: 8,
+    marginBottom: 24,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  audioTrimmerSelection: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: 100, // Fixed width for 30s window representation
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    borderRadius: 6,
+  },
+  audioTrimmerActions: {
+    flexDirection: 'row',
+    width: '100%',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  audioTrimmerActionText: {
+    color: '#FFF',
+    fontSize: 16,
     fontWeight: '600',
+  },
+  audioTrimmerDoneText: {
+    color: '#38bdf8',
   },
   backButton: {
     padding: 10,

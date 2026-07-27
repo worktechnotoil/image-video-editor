@@ -12,6 +12,17 @@ const root = path.resolve(__dirname, '..');
 const config = {
   watchFolders: [root],
   resolver: {
+    extraNodeModules: new Proxy(
+      {
+        '@technotoil/image-video-editor': root,
+      },
+      {
+        get: (target, name) =>
+          name in target
+            ? target[name]
+            : path.join(__dirname, 'node_modules', name),
+      }
+    ),
     nodeModulesPaths: [
       path.resolve(__dirname, 'node_modules'),
       path.resolve(root, 'node_modules'),
