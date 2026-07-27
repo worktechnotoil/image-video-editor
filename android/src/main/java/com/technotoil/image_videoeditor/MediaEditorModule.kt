@@ -516,7 +516,7 @@ class MediaEditorModule(private val reactContext: ReactApplicationContext) :
         val oy = f(frameOffsetY)
         val vScale = "$currentLabel" + "scale='trunc(iw*${insetLabel}/2)*2':'trunc(ih*${insetLabel}/2)*2',pad='trunc(iw/${insetLabel}/2)*2':'trunc(ih/${insetLabel}/2)*2':(ow-iw)/2:(oh-ih)/2+(${oy}*oh):color=black[v_scaled]"
         filterSteps.add(vScale)
-        filterSteps.add("[${frameInputIndex}:v][v_scaled]scale2ref=w=iw:h=ih[frame_ref][v_padded]")
+        filterSteps.add("[${frameInputIndex}:v][v_scaled]scale2ref=w=rw:h=rh[frame_ref][v_padded]")
         filterSteps.add("[v_padded][frame_ref]overlay=0:0:format=auto[v_framed]")
         currentLabel = "[v_framed]"
       }
@@ -575,7 +575,7 @@ class MediaEditorModule(private val reactContext: ReactApplicationContext) :
 
       // 7. Text overlays
       if (textOverlayFile != null) {
-        filterSteps.add("[${textInputIndex}:v]$currentLabel" + "scale2ref=w=iw:h=ih[text_scaled][v_text_base]")
+        filterSteps.add("[${textInputIndex}:v]$currentLabel" + "scale2ref=w=rw:h=rh[text_scaled][v_text_base]")
         filterSteps.add("[v_text_base][text_scaled]overlay=0:0:shortest=1:format=auto[v_text]")
         currentLabel = "[v_text]"
       }

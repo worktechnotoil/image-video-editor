@@ -73,4 +73,12 @@ dependencies {
   implementation "com.facebook.react:react-android"
   implementation "io.github.maitrungduc1410:ffmpeg-kit-https:6.0.1"
   implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
+  
+  def cameraxVersion = "1.4.1"
+  implementation "androidx.camera:camera-core:$cameraxVersion"
+  implementation "androidx.camera:camera-camera2:$cameraxVersion"
+  implementation "androidx.camera:camera-lifecycle:$cameraxVersion"
+  implementation "androidx.camera:camera-view:$cameraxVersion"
+  implementation "com.google.mlkit:face-detection:16.1.7"
+  implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.8.7"
 }

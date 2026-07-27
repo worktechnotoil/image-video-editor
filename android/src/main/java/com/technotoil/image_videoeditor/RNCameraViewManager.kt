@@ -381,7 +381,17 @@ class RNCameraView(context: Context) : FrameLayout(context) {
         }
     }
 
+    private fun fileLog(message: String) {
+        try {
+            val file = java.io.File(context.cacheDir, "camera_log.txt")
+            val time = java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US).format(java.util.Date())
+            file.appendText("$time : $message\n")
+            android.util.Log.d("RN_CAMERA", message)
+        } catch (e: Exception) {}
+    }
+
     fun startRecording(promise: Promise) {
+        fileLog("startRecording() called")
         if (isRecording) {
             return promise.reject("already_recording", "Camera is already recording video.")
         }
@@ -402,88 +412,184 @@ class RNCameraView(context: Context) : FrameLayout(context) {
         val device = cameraDevice ?: return promise.reject("camera_error", "Camera not ready")
         val texture = textureView.surfaceTexture ?: return promise.reject("camera_error", "Texture not ready")
 
+        isRecording = true
         videoRecordPromise = promise
         currentVideoFile = File(context.cacheDir, "video_${System.currentTimeMillis()}.mp4")
 
         try {
-            closeCamera() // Close standard preview first
-            openCamera() // Wait for camera to open and prepare recorder
-            
-            // Wait for cameraDevice is ready to record
+            fileLog("Posting to backgroundHandler")
             backgroundHandler?.post {
-                while (cameraDevice == null) {
-                    Thread.sleep(50)
-                }
-                
-                val recordDevice = cameraDevice!!
-                val manager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
-                val chars = manager.getCameraCharacteristics(recordDevice.id)
-                val sensorOrientation = chars.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
+                try {
+                    fileLog("Inside backgroundHandler")
 
-                mediaRecorder = MediaRecorder(context).apply {
-                    setAudioSource(MediaRecorder.AudioSource.MIC)
-                    setVideoSource(MediaRecorder.VideoSource.SURFACE)
-                    setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-                    setOutputFile(currentVideoFile!!.absolutePath)
-                    setVideoEncodingBitRate(10000000)
-                    setVideoFrameRate(30)
-                    setVideoSize(1280, 720)
-                    setVideoEncoder(MediaRecorder.VideoEncoder.H264)
-                    setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                    fileLog("Stopping old capture session")
+                    try {
+                        captureSession?.stopRepeating()
+                        captureSession?.abortCaptures()
+                        captureSession?.close()
+                    } catch (e: Exception) {}
+                    captureSession = null
                     
-                    // Front camera video needs correct rotation
-                    setOrientationHint(sensorOrientation)
-                    prepare()
-                }
-
-                val map = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
-                val previewSize = getOptimalPreviewSize(map?.getOutputSizes(SurfaceTexture::class.java))
-                currentPreviewSize = previewSize
-                texture.setDefaultBufferSize(previewSize.width, previewSize.height)
-                val reactContext = context as? com.facebook.react.bridge.ReactContext
-                reactContext?.runOnUiQueueThread {
-                    adjustAspectRatio(textureView.width, textureView.height)
-                }
-
-                val previewSurface = Surface(texture)
-                val recorderSurface = mediaRecorder!!.surface
-
-                val recordBuilder = recordDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD)
-                recordBuilder.addTarget(previewSurface)
-                recordBuilder.addTarget(recorderSurface)
-
-                val hasFlash = chars.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) ?: false
-                if (hasFlash) {
-                    if (flashMode == "on") {
-                        recordBuilder.set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_TORCH)
-                    } else {
-                        recordBuilder.set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_OFF)
+                    // Small delay for cleanup (Android 16 HAL state transition buffer)
+                    Thread.sleep(100)
+                    val recordDevice = cameraDevice
+                    if (recordDevice == null) {
+                        videoRecordPromise?.reject("record_error", "Camera device is null")
+                        videoRecordPromise = null
+                        return@post
                     }
-                }
+                    
+                    val manager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+                    val chars = manager.getCameraCharacteristics(recordDevice.id)
+                    val sensorOrientation = chars.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
 
-                recordDevice.createCaptureSession(listOf(previewSurface, recorderSurface), object : CameraCaptureSession.StateCallback() {
-                    override fun onConfigured(session: CameraCaptureSession) {
-                        captureSession = session
-                        recordBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO)
-                        try {
-                            session.setRepeatingRequest(recordBuilder.build(), null, backgroundHandler)
-                            mediaRecorder!!.start()
-                            isRecording = true
-                            videoRecordPromise?.resolve(null)
-                            videoRecordPromise = null
-                        } catch (e: Exception) {
-                            videoRecordPromise?.reject("record_error", e.message)
-                            videoRecordPromise = null
+                    val map = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+                    val previewSize = getOptimalPreviewSize(map?.getOutputSizes(SurfaceTexture::class.java))
+                    val videoSizes = map?.getOutputSizes(MediaRecorder::class.java)
+                    val videoSize = videoSizes?.firstOrNull { it.width <= 1920 } ?: android.util.Size(1280, 720)
+
+                    fileLog("1 setup media recorder")
+                    mediaRecorder = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                        MediaRecorder(context)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        MediaRecorder()
+                    }
+                    try {
+                        mediaRecorder!!.apply {
+                            setAudioSource(MediaRecorder.AudioSource.MIC)
+                            setVideoSource(MediaRecorder.VideoSource.SURFACE)
+                            setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                            setOutputFile(currentVideoFile!!.absolutePath)
+                            setVideoEncodingBitRate(10000000)
+                            setVideoFrameRate(30)
+                            setVideoSize(videoSize.width, videoSize.height)
+                            setVideoEncoder(MediaRecorder.VideoEncoder.H264)
+                            setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                            setAudioChannels(1)
+                            setAudioSamplingRate(44100)
+                            setAudioEncodingBitRate(128000)
+                            
+                            setOrientationHint(sensorOrientation)
+                            fileLog("Calling mediaRecorder.prepare() with Audio")
+                            prepare()
+                            fileLog("mediaRecorder.prepare() finished")
+                        }
+                    } catch (e: Exception) {
+                        fileLog("Audio setup failed, falling back to mute recording: ${e.message}")
+                        mediaRecorder!!.reset()
+                        mediaRecorder!!.apply {
+                            setVideoSource(MediaRecorder.VideoSource.SURFACE)
+                            setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                            setOutputFile(currentVideoFile!!.absolutePath)
+                            setVideoEncodingBitRate(10000000)
+                            setVideoFrameRate(30)
+                            setVideoSize(videoSize.width, videoSize.height)
+                            setVideoEncoder(MediaRecorder.VideoEncoder.H264)
+                            
+                            setOrientationHint(sensorOrientation)
+                            fileLog("Calling mediaRecorder.prepare() without Audio")
+                            prepare()
+                            fileLog("mediaRecorder.prepare() without Audio finished")
                         }
                     }
 
-                    override fun onConfigureFailed(session: CameraCaptureSession) {
-                        videoRecordPromise?.reject("record_error", "Video Session configure failed")
-                        videoRecordPromise = null
+                    currentPreviewSize = previewSize
+                    texture.setDefaultBufferSize(previewSize.width, previewSize.height)
+                    val reactContext = context as? com.facebook.react.bridge.ReactContext
+                    reactContext?.runOnUiQueueThread {
+                        adjustAspectRatio(textureView.width, textureView.height)
                     }
-                }, backgroundHandler)
+
+                    val previewSurface = Surface(texture)
+                    val recorderSurface = mediaRecorder!!.surface
+
+                    val recordBuilder = recordDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD)
+                    recordBuilder.addTarget(previewSurface)
+                    recordBuilder.addTarget(recorderSurface)
+
+                    val hasFlash = chars.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) ?: false
+                    if (hasFlash) {
+                        if (flashMode == "on") {
+                            recordBuilder.set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_TORCH)
+                        } else {
+                            recordBuilder.set(CaptureRequest.FLASH_MODE, CameraMetadata.FLASH_MODE_OFF)
+                        }
+                    }
+
+                    fileLog("2 create session")
+                    recordDevice.createCaptureSession(listOf(previewSurface, recorderSurface), object : CameraCaptureSession.StateCallback() {
+                        override fun onConfigured(session: CameraCaptureSession) {
+                            fileLog("3 configured")
+                            captureSession = session
+                            recordBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO)
+                            val watchdogThread = kotlin.concurrent.thread {
+                                try {
+                                    Thread.sleep(4000) // 4 seconds max
+                                    if (videoRecordPromise != null) {
+                                        fileLog("WATCHDOG: mediaRecorder.start() blocked for >4 seconds!")
+                                        isRecording = false
+                                        val p = videoRecordPromise
+                                        videoRecordPromise = null
+                                        p?.reject("record_freeze", "Camera hardware froze while starting")
+                                        try { mediaRecorder?.reset() } catch (ex: Exception) {}
+                                        try { mediaRecorder?.release() } catch (ex: Exception) {}
+                                        mediaRecorder = null
+                                        backgroundHandler?.post { createCameraPreview() }
+                                    }
+                                } catch (e: InterruptedException) {}
+                            }
+                            
+                            kotlin.concurrent.thread {
+                                try {
+                                    fileLog("4 start recorder")
+                                    mediaRecorder?.start()
+                                    isRecording = true
+                                    watchdogThread.interrupt() // Success, cancel watchdog
+                                    videoRecordPromise?.resolve(null)
+                                    videoRecordPromise = null
+                                    
+                                    fileLog("5 setRepeatingRequest")
+                                    session.setRepeatingRequest(recordBuilder.build(), null, backgroundHandler)
+                                } catch (e: Throwable) {
+                                    fileLog("start/setRepeatingRequest failed: ${e.message}")
+                                    watchdogThread.interrupt()
+                                    isRecording = false
+                                    videoRecordPromise?.reject("record_error", e.message)
+                                    videoRecordPromise = null
+                                    try { mediaRecorder?.reset() } catch (ex: Exception) {}
+                                    try { mediaRecorder?.release() } catch (ex: Exception) {}
+                                    mediaRecorder = null
+                                    backgroundHandler?.postDelayed({ createCameraPreview() }, 500)
+                                }
+                            }
+
+                        }
+
+                        override fun onConfigureFailed(session: CameraCaptureSession) {
+                            fileLog("onConfigureFailed")
+                            isRecording = false
+                            videoRecordPromise?.reject("record_error", "Video Session configure failed")
+                            videoRecordPromise = null
+                            try { mediaRecorder?.reset() } catch (ex: Exception) {}
+                            try { mediaRecorder?.release() } catch (ex: Exception) {}
+                            mediaRecorder = null
+                            backgroundHandler?.postDelayed({ createCameraPreview() }, 500)
+                        }
+                    }, backgroundHandler)
+                } catch (e: Throwable) {
+                    fileLog("backgroundHandler try failed: ${e.message}")
+                    isRecording = false
+                    videoRecordPromise?.reject("record_error", e.message)
+                    videoRecordPromise = null
+                    try { mediaRecorder?.reset() } catch (ex: Exception) {}
+                    try { mediaRecorder?.release() } catch (ex: Exception) {}
+                    mediaRecorder = null
+                    backgroundHandler?.postDelayed({ createCameraPreview() }, 500)
+                }
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            isRecording = false
             promise.reject("record_error", e.message)
             videoRecordPromise = null
         }
@@ -496,14 +602,19 @@ class RNCameraView(context: Context) : FrameLayout(context) {
 
         videoStopPromise = promise
 
-        backgroundHandler?.post {
+        kotlin.concurrent.thread {
             try {
                 mediaRecorder!!.stop()
                 mediaRecorder!!.reset()
                 mediaRecorder = null
                 isRecording = false
 
-                val file = currentVideoFile ?: return@post promise.reject("error", "Recorded video file is missing")
+                val file = currentVideoFile
+                if (file == null) {
+                    videoStopPromise?.reject("error", "Recorded video file is missing")
+                    videoStopPromise = null
+                    return@thread
+                }
                 
                 val retriever = MediaMetadataRetriever()
                 retriever.setDataSource(file.absolutePath)
@@ -520,14 +631,19 @@ class RNCameraView(context: Context) : FrameLayout(context) {
                 }
 
                 // Reopen normal camera preview
-                reopenCamera()
+                backgroundHandler?.post { createCameraPreview() }
 
                 videoStopPromise?.resolve(map)
                 videoStopPromise = null
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                try { mediaRecorder?.reset() } catch (e2: Exception) {}
+                try { mediaRecorder?.release() } catch (e2: Exception) {}
+                mediaRecorder = null
+                isRecording = false
+                
                 videoStopPromise?.reject("stop_error", e.message)
                 videoStopPromise = null
-                reopenCamera()
+                backgroundHandler?.post { createCameraPreview() }
             }
         }
     }

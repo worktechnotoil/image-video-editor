@@ -7,7 +7,8 @@ export interface MusicTrack {
   url: string;
   duration: string;
   cover: string;
-  isCustom?: boolean;
+  isCustom?: boolean; // Deprecated: use category instead
+  category?: 'for_you' | 'trending' | 'saved' | 'original' | 'custom' | string;
 }
 
 export type MediaItem = {

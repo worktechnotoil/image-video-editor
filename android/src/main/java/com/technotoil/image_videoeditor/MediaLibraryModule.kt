@@ -46,15 +46,21 @@ class MediaLibraryModule(private val reactContext: ReactApplicationContext) :
     }
 
     if (activity is com.facebook.react.modules.core.PermissionAwareActivity) {
-      activity.requestPermissions(permissions, 4422,
-        com.facebook.react.modules.core.PermissionListener { _: Int, _: Array<String>, grantResults: IntArray ->
-          val granted = grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }
-          promise.resolve(granted)
-          granted
-        }
-      )
+      try {
+        activity.requestPermissions(permissions, 4422,
+          com.facebook.react.modules.core.PermissionListener { _: Int, _: Array<String>, grantResults: IntArray ->
+            val granted = grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+            promise.resolve(granted)
+            granted
+          }
+        )
+      } catch (e: IllegalStateException) {
+        promise.resolve(false)
+      }
     } else {
-      ActivityCompat.requestPermissions(activity, permissions, 4422)
+      try {
+        ActivityCompat.requestPermissions(activity, permissions, 4422)
+      } catch (e: Exception) {}
       promise.resolve(false)
     }
   }

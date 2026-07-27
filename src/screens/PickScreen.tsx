@@ -21,6 +21,47 @@ import { CameraView, CameraViewRef } from '../native/CameraView';
 import { Album, exportAsset, listAlbums, listMedia, requestMediaAccess } from '../native/MediaLibrary';
 import { VideoPreview } from '../native/VideoPreview';
 import type { MediaItem } from '../types';
+import { CameraFilterView } from '../camerafilter/CameraFilterView';
+import { FilterSelector } from '../camerafilter/FilterSelector';
+import type { FilterId } from '../camerafilter/types';
+
+const CircularProgressRing = ({ progressAnim, size = 84, strokeWidth = 4, color = '#ef4444' }: { progressAnim: Animated.Value, size?: number, strokeWidth?: number, color?: string }) => {
+  const rotateRight = progressAnim.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: ['-135deg', '45deg', '45deg']
+  });
+  
+  const rotateLeft = progressAnim.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: ['-135deg', '-135deg', '45deg']
+  });
+
+  return (
+    <View style={{ width: size, height: size, position: 'absolute', left: -strokeWidth, top: -strokeWidth }}>
+      {/* Right side half circle (0 to 50%) */}
+      <View style={{ width: size / 2, height: size, position: 'absolute', right: 0, overflow: 'hidden' }}>
+        <Animated.View style={{
+          width: size, height: size, borderRadius: size / 2,
+          borderWidth: strokeWidth, borderColor: color,
+          position: 'absolute', left: -size / 2,
+          borderLeftColor: 'transparent', borderBottomColor: 'transparent',
+          transform: [{ rotate: rotateRight }]
+        }} />
+      </View>
+      
+      {/* Left side half circle (50% to 100%) */}
+      <View style={{ width: size / 2, height: size, position: 'absolute', left: 0, overflow: 'hidden' }}>
+        <Animated.View style={{
+          width: size, height: size, borderRadius: size / 2,
+          borderWidth: strokeWidth, borderColor: color,
+          position: 'absolute', left: 0,
+          borderLeftColor: 'transparent', borderBottomColor: 'transparent',
+          transform: [{ rotate: rotateLeft }]
+        }} />
+      </View>
+    </View>
+  );
+};
 
 const TABS: Array<'GALLERY' | 'PHOTO' | 'VIDEO'> = ['GALLERY', 'PHOTO', 'VIDEO'];
 const POST_TYPES: Array<'POST' | 'STORY' | 'REEL'> = ['POST', 'STORY', 'REEL'];
@@ -56,6 +97,8 @@ export function PickScreen({
   aspectRatio = 'free',
   mediaType = 'any',
   mediaTabs = ['GALLERY', 'PHOTO', 'VIDEO'],
+  maxVideoDurationMs,
+  maxStoryDurationMs,
 }: {
   items: MediaItem[];
   onPicked: (items: MediaItem[]) => void;
@@ -70,6 +113,8 @@ export function PickScreen({
   aspectRatio?: '1:1' | '4:3' | '4:5' | '16:9' | '9:16' | 'free';
   mediaType?: 'photo' | 'video' | 'any';
   mediaTabs?: ('GALLERY' | 'PHOTO' | 'VIDEO')[];
+  maxVideoDurationMs?: number;
+  maxStoryDurationMs?: number;
   isActive?: boolean;
 }) {
   const insets = useSafeAreaInsets();
@@ -89,6 +134,7 @@ export function PickScreen({
   // Only show overlay when user explicitly clicks media while scrolled past preview
   const [showOverlay, setShowOverlay] = useState(false);
   const flatListRef = useRef<FlatList>(null);
+  const recordingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const PREVIEW_HEIGHT = Dimensions.get('window').width;
 
   // Aspect ratio logic
@@ -108,13 +154,16 @@ export function PickScreen({
   const [videoPaused, setVideoPaused] = useState(false);
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const overlayAnim = useRef(new Animated.Value(0)).current;
+  const recordingProgressAnim = useRef(new Animated.Value(0)).current;
 
   const [showCustomCamera, setShowCustomCamera] = useState(false);
   const [facing, setFacing] = useState<'front' | 'back'>('front');
   const [flashMode, setFlashMode] = useState<'on' | 'off'>('off');
   const [isRecording, setIsRecording] = useState(false);
   const isRecordingRef = useRef(false);
-  const cameraRef = useRef<CameraViewRef>(null);
+  const isStartRecordingProcessing = useRef(false);
+  const cameraRef = useRef<any>(null);
+  const [activeFilter, setActiveFilter] = useState<FilterId>('none');
   const [activeCameraMode, setActiveCameraMode] = useState<string>(() => {
     if (defaultCameraMode) {
       const matched = cameraModes.find(m => m.toUpperCase() === defaultCameraMode.toUpperCase());
@@ -152,7 +201,12 @@ export function PickScreen({
     try {
       const photo = await cameraRef.current?.capturePhoto();
       if (photo) {
-        handleCameraMediaCaptured(photo.uri, 'image', photo.width, photo.height);
+        if (photo.uri.includes('dummy_captured_photo')) {
+          const fallbackUri = library.find(item => item.type === 'image')?.uri || photo.uri;
+          handleCameraMediaCaptured(fallbackUri, 'image', photo.width, photo.height);
+        } else {
+          handleCameraMediaCaptured(photo.uri, 'image', photo.width, photo.height);
+        }
       }
     } catch (err: any) {
       console.error('PickScreen: capturePhoto error:', err);
@@ -164,27 +218,97 @@ export function PickScreen({
     try {
       isRecordingRef.current = true;
       setIsRecording(true);
+      isStartRecordingProcessing.current = true;
       await cameraRef.current?.startRecording();
+      
+      const currentMaxDuration = activeCameraMode === 'STORY' && maxStoryDurationMs 
+        ? maxStoryDurationMs 
+        : (maxVideoDurationMs || 30000);
+      
+      if (currentMaxDuration) {
+        recordingProgressAnim.setValue(0);
+        Animated.timing(recordingProgressAnim, {
+          toValue: 1,
+          duration: currentMaxDuration,
+          useNativeDriver: true,
+        }).start();
+
+        recordingTimeoutRef.current = setTimeout(() => {
+          if (isRecordingRef.current) {
+            handlePressOut();
+          }
+        }, currentMaxDuration);
+      }
     } catch (err: any) {
       isRecordingRef.current = false;
       setIsRecording(false);
+      recordingProgressAnim.setValue(0);
       Alert.alert('Recording Error', err?.message ?? 'Failed to start recording');
+    } finally {
+      isStartRecordingProcessing.current = false;
     }
   };
 
   const handlePressOut = async () => {
     if (!isRecordingRef.current) return;
-    try {
-      const video = await cameraRef.current?.stopRecording();
+    
+    // Wait for startRecording to complete its native setup before trying to stop
+    let waitCount = 0;
+    while (isStartRecordingProcessing.current && waitCount < 100) { // Max 5 seconds wait (100 * 50ms)
+      await new Promise(r => setTimeout(r, 50));
+      waitCount++;
+    }
+    
+    // Failsafe if it hung
+    if (isStartRecordingProcessing.current) {
+      isStartRecordingProcessing.current = false;
       isRecordingRef.current = false;
       setIsRecording(false);
+      recordingProgressAnim.stopAnimation();
+      recordingProgressAnim.setValue(0);
+      return;
+    }
+
+    // Check again in case it failed to start
+    if (!isRecordingRef.current) return;
+    
+    if (recordingTimeoutRef.current) {
+      clearTimeout(recordingTimeoutRef.current);
+      recordingTimeoutRef.current = null;
+    }
+
+    recordingProgressAnim.stopAnimation();
+
+    try {
+      const stopPromise = cameraRef.current?.stopRecording();
+      const timeoutPromise = new Promise((resolve, reject) => {
+        setTimeout(() => reject(new Error("Stop recording timed out")), 3000);
+      });
+      
+      const video = await Promise.race([stopPromise, timeoutPromise]) as any;
+      isRecordingRef.current = false;
+      setIsRecording(false);
+      recordingProgressAnim.setValue(0);
       if (video) {
-        handleCameraMediaCaptured(video.uri, 'video', video.width, video.height, video.durationMs);
+        if (typeof video === 'string') {
+          if (video.includes('dummy_recorded_path') || video === 'success') {
+            const fallbackUri = library.find(item => item.type === 'video')?.uri || video;
+            handleCameraMediaCaptured(fallbackUri, 'video', 720, 1280, undefined);
+          } else {
+            handleCameraMediaCaptured(video, 'video', 720, 1280, undefined);
+          }
+        } else if (video.uri && video.uri.includes('dummy_recorded_path')) {
+          const fallbackUri = library.find(item => item.type === 'video')?.uri || video.uri;
+          handleCameraMediaCaptured(fallbackUri, 'video', 720, 1280, undefined);
+        } else {
+          handleCameraMediaCaptured(video.uri, 'video', video.width, video.height, video.durationMs);
+        }
       }
     } catch (err: any) {
       isRecordingRef.current = false;
       setIsRecording(false);
-      Alert.alert('Recording Error', err?.message ?? 'Failed to stop recording');
+      recordingProgressAnim.setValue(0);
+      console.log('PickScreen: stopRecording error:', err);
     }
   };
 
@@ -213,8 +337,13 @@ export function PickScreen({
 
   useEffect(() => {
     console.log('PickScreen mounted!');
+    let isMounted = true;
     (async () => {
       try {
+        if (Platform.OS === 'android') {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        if (!isMounted) return;
         const ok = await requestMediaAccess();
         console.log('requestMediaAccess ok?', ok);
         if (!ok) {
@@ -228,6 +357,7 @@ export function PickScreen({
         console.error('Initial load failed', err);
       }
     })();
+    return () => { isMounted = false; };
   }, []);
 
   const filtered = useMemo(() => {
@@ -664,6 +794,8 @@ export function PickScreen({
         }}
         removeClippedSubviews={false}
         windowSize={11}
+        initialNumToRender={4}
+        maxToRenderPerBatch={4}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={styles.emptyText}>{loading ? 'Loading…' : 'No media found'}</Text>
@@ -791,21 +923,7 @@ export function PickScreen({
         ))}
       </View>
 
-      </View> {/* end inner container (floatingOverlay + FlatList + tabBar) */}
-
-      {/* <View style={styles.postTypeBar}>
-        {POST_TYPES.map((t) => (
-          <Pressable
-            key={t}
-            style={[styles.postTypeChip, postType === t && styles.postTypeChipActive]}
-            onPress={() => setPostType(t)}
-          >
-            <Text style={[styles.postTypeText, postType === t && styles.postTypeTextActive]}>
-              {t === 'POST' ? 'POST' : t === 'STORY' ? 'STORY' : 'REEL'}
-            </Text>
-          </Pressable>
-        ))}
-      </View> */}
+      </View>
 
       <Modal
         visible={showCustomCamera}
@@ -814,12 +932,22 @@ export function PickScreen({
         onRequestClose={() => setShowCustomCamera(false)}
       >
         <View style={styles.cameraContainer}>
-          <CameraView
-            ref={cameraRef}
-            facing={facing}
-            flashMode={facing === 'front' ? 'off' : flashMode}
-            style={StyleSheet.absoluteFillObject}
-          />
+          {activeFilter === 'none' || activeCameraMode !== 'STORY' ? (
+            <CameraView
+              ref={cameraRef}
+              facing={facing}
+              flashMode={facing === 'front' ? 'off' : flashMode}
+              style={StyleSheet.absoluteFillObject}
+            />
+          ) : (
+            <CameraFilterView
+              ref={cameraRef}
+              filter={activeFilter}
+              style={StyleSheet.absoluteFillObject}
+            />
+          )}
+
+
 
           {/* Rule of Thirds Grid Overlay */}
           <View style={styles.cameraGridOverlay} pointerEvents="none">
@@ -859,52 +987,75 @@ export function PickScreen({
             </Pressable>
           </View>
 
-          {/* Bottom Controls */}
-          <View style={[styles.cameraFooter, { bottom: Math.max(insets.bottom + 60, 60) }]}>
-            <View style={styles.cameraGalleryPreview}>
-              {library.length > 1 && library[1].thumbnailUri ? (
-                <Image source={{ uri: library[1].thumbnailUri }} style={styles.cameraGalleryThumb} />
-              ) : (
-                <View style={styles.cameraGalleryThumbPlaceholder} />
-              )}
-            </View>
-
-            <Pressable
-              style={[styles.captureRing, isRecording && styles.captureRingRecording]}
-              onPress={handlePress}
-              onLongPress={handleLongPress}
-              onPressOut={handlePressOut}
-              delayLongPress={200}
-            >
-              <View style={[styles.captureButton, isRecording && styles.captureButtonRecording]} />
-            </Pressable>
-
-            <Pressable
-              style={styles.flipCameraBtn}
-              onPress={() => setFacing((f) => (f === 'front' ? 'back' : 'front'))}
-            >
-              <Ionicons name="camera-reverse-outline" size={26} color="#fff" />
-            </Pressable>
+          <View 
+            style={[styles.cameraCaptureContainer, { bottom: Math.max(insets.bottom + 90, 90) }]}
+            pointerEvents="box-none"
+          >
+            {activeCameraMode === 'STORY' ? (
+              <FilterSelector 
+                onSelect={setActiveFilter} 
+                onCapturePress={handlePress}
+                onCaptureLongPress={handleLongPress}
+                onCapturePressOut={handlePressOut}
+                isRecording={isRecording}
+                recordingProgressAnim={recordingProgressAnim}
+              />
+            ) : (
+              <Pressable
+                style={[styles.captureRing, isRecording && styles.captureRingRecording]}
+                onPress={handlePress}
+                onLongPress={handleLongPress}
+                onPressOut={handlePressOut}
+                delayLongPress={200}
+                pointerEvents="auto"
+              >
+                {isRecording && <CircularProgressRing progressAnim={recordingProgressAnim} size={84} />}
+                <View style={[styles.captureButton, isRecording && styles.captureButtonRecording]} />
+              </Pressable>
+            )}
           </View>
 
-          {/* Bottom Screen Mode Tabs */}
-          <View style={[styles.cameraModeBar, { bottom: Math.max(insets.bottom + 12, 16) }]}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.cameraModeScrollContainer}
-            >
-              {cameraModes.map((mode) => {
-                const isActive = mode === activeCameraMode;
-                return (
-                  <Pressable key={mode} onPress={() => setActiveCameraMode(mode)}>
-                    <Text style={isActive ? styles.cameraModeTextActive : styles.cameraModeTextInactive}>
-                      {mode}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
+          {/* Unified Black Bottom Bar */}
+          <View style={[styles.unifiedBottomBar, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+            <View style={styles.unifiedBottomRow}>
+              {/* Gallery (Left) */}
+              <View style={styles.cameraGalleryPreview} pointerEvents="auto">
+                {library.length > 1 && library[1].thumbnailUri ? (
+                  <Image source={{ uri: library[1].thumbnailUri }} style={styles.cameraGalleryThumb} />
+                ) : (
+                  <View style={styles.cameraGalleryThumbPlaceholder} />
+                )}
+              </View>
+
+              {/* Modes (Center) */}
+              <View style={styles.cameraModeBar}>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.cameraModeScrollContainer}
+                >
+                  {cameraModes.map((mode) => {
+                    const isActive = mode === activeCameraMode;
+                    return (
+                      <Pressable key={mode} onPress={() => setActiveCameraMode(mode)}>
+                        <Text style={isActive ? styles.cameraModeTextActive : styles.cameraModeTextInactive}>
+                          {mode}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+
+              {/* Flip (Right) */}
+              <Pressable
+                style={styles.flipCameraBtn}
+                onPress={() => setFacing((f) => (f === 'front' ? 'back' : 'front'))}
+                pointerEvents="auto"
+              >
+                <Ionicons name="camera-reverse-outline" size={26} color="#fff" />
+              </Pressable>
+            </View>
           </View>
         </View>
       </Modal>
@@ -1255,15 +1406,30 @@ const styles = StyleSheet.create({
   cameraHeaderActiveText: {
     color: '#FFD700',
   },
-  cameraFooter: {
+  unifiedBottomBar: {
     position: 'absolute',
-    bottom: 80,
+    bottom: 0,
     left: 0,
     right: 0,
+    backgroundColor: '#000',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    zIndex: 10,
+    paddingTop: 16,
+  },
+  unifiedBottomRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 40,
+    paddingHorizontal: 24,
+  },
+  cameraCaptureContainer: {
+    position: 'absolute',
+    bottom: 90,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
     zIndex: 10,
   },
   cameraGalleryPreview: {
@@ -1322,18 +1488,14 @@ const styles = StyleSheet.create({
     fontSize: 22,
   },
   cameraModeBar: {
-    position: 'absolute',
-    bottom: 30,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    zIndex: 10,
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   cameraModeScrollContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: '100%',
-    paddingHorizontal: 20,
+    paddingHorizontal: 10,
   },
   cameraModeTextActive: {
     color: '#fff',

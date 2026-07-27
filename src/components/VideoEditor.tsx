@@ -37,6 +37,11 @@ export interface VideoEditorProps {
    * Maximum video duration allowed (in milliseconds).
    */
   maxVideoDurationMs?: number;
+  /**
+   * Maximum video duration allowed specifically for STORY mode (in milliseconds).
+   * Overrides maxVideoDurationMs when camera is in STORY mode.
+   */
+  maxStoryDurationMs?: number;
   /** Filter the media type that can be picked. Default: 'any' */
   mediaType?: 'photo' | 'video' | 'any';
   /** Control which tabs are shown in the picker. Default: ['GALLERY', 'PHOTO', 'VIDEO'] */
@@ -55,6 +60,7 @@ export default function VideoEditor({
   maxSelection = 1,
   aspectRatio = 'free',
   maxVideoDurationMs,
+  maxStoryDurationMs,
   mediaType = 'any',
   mediaTabs = ['GALLERY', 'PHOTO', 'VIDEO'],
 }: VideoEditorProps) {
@@ -114,6 +120,8 @@ export default function VideoEditor({
             defaultCameraMode={defaultCameraMode}
             maxSelection={clampedMax}
             aspectRatio={aspectRatio}
+            maxVideoDurationMs={maxVideoDurationMs}
+            maxStoryDurationMs={maxStoryDurationMs}
             onCameraModeChange={(mode) => {
               setSelectedCameraMode(mode);
             }}

@@ -94,53 +94,45 @@ class RNVideoView(context: android.content.Context) : FrameLayout(context), Text
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec)
-        
-        val parentWidth = measuredWidth
-        val parentHeight = measuredHeight
-        
-        if (videoW > 0 && videoH > 0 && parentWidth > 0 && parentHeight > 0) {
-            val videoAspect = videoW.toFloat() / videoH.toFloat()
-            val parentAspect = parentWidth.toFloat() / parentHeight.toFloat()
-            
-            var childWidth = parentWidth
-            var childHeight = parentHeight
-            
-            if (resizeMode == "contain") {
-                if (videoAspect > parentAspect) {
-                    childHeight = (parentWidth / videoAspect).toInt()
-                } else {
-                    childWidth = (parentHeight * videoAspect).toInt()
-                }
-            } else {
-                if (videoAspect > parentAspect) {
-                    childWidth = (parentHeight * videoAspect).toInt()
-                    childHeight = parentHeight
-                } else {
-                    childWidth = parentWidth
-                    childHeight = (parentWidth / videoAspect).toInt()
-                }
-            }
-            
-            textureView.measure(
-                MeasureSpec.makeMeasureSpec(childWidth, MeasureSpec.EXACTLY),
-                MeasureSpec.makeMeasureSpec(childHeight, MeasureSpec.EXACTLY)
-            )
-        } else {
-            textureView.measure(widthMeasureSpec, heightMeasureSpec)
-        }
+        textureView.measure(
+            MeasureSpec.makeMeasureSpec(measuredWidth, MeasureSpec.EXACTLY),
+            MeasureSpec.makeMeasureSpec(measuredHeight, MeasureSpec.EXACTLY)
+        )
     }
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         val parentWidth = right - left
         val parentHeight = bottom - top
-        
-        val childWidth = textureView.measuredWidth
-        val childHeight = textureView.measuredHeight
-        
-        val childLeft = (parentWidth - childWidth) / 2
-        val childTop = (parentHeight - childHeight) / 2
-        
-        textureView.layout(childLeft, childTop, childLeft + childWidth, childTop + childHeight)
+        textureView.layout(0, 0, parentWidth, parentHeight)
+
+        if (videoW > 0 && videoH > 0 && parentWidth > 0 && parentHeight > 0) {
+            val viewAspect = parentWidth.toFloat() / parentHeight.toFloat()
+            
+            // MediaPlayer does not always handle rotation metadata properly for width/height.
+            // But assuming videoW and videoH are post-rotation:
+            val videoAspect = videoW.toFloat() / videoH.toFloat()
+            
+            val matrix = android.graphics.Matrix()
+            var scaleX = 1f
+            var scaleY = 1f
+            
+            if (resizeMode == "contain") {
+                if (videoAspect > viewAspect) {
+                    scaleY = viewAspect / videoAspect
+                } else {
+                    scaleX = videoAspect / viewAspect
+                }
+            } else { // cover
+                if (videoAspect > viewAspect) {
+                    scaleX = videoAspect / viewAspect
+                } else {
+                    scaleY = viewAspect / videoAspect
+                }
+            }
+            
+            matrix.setScale(scaleX, scaleY, parentWidth / 2f, parentHeight / 2f)
+            textureView.setTransform(matrix)
+        }
     }
 
     init {

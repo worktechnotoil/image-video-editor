@@ -263,9 +263,6 @@
         return;
     }
     
-    self.recordResolve = resolve;
-    self.recordReject = reject;
-    
     NSString *fileName = [NSString stringWithFormat:@"video_%f.mp4", [[NSDate date] timeIntervalSince1970]];
     NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:fileName];
     NSURL *fileURL = [NSURL fileURLWithPath:path];
@@ -294,10 +291,12 @@
                 dispatch_async(self.sessionQueue, ^{
                     connection.videoOrientation = avOrientation;
                     [self.movieOutput startRecordingToOutputFileURL:fileURL recordingDelegate:self];
+                    resolve(@{});
                 });
             });
         } else {
             [self.movieOutput startRecordingToOutputFileURL:fileURL recordingDelegate:self];
+            resolve(@{});
         }
     });
 }

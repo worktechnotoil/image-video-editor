@@ -11,6 +11,7 @@ const DUMMY_MUSIC_LIST = [
     url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
     duration: '6:12',
     cover: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=150&auto=format&fit=crop&q=60',
+    category: 'for_you',
   },
   {
     id: '2',
@@ -19,6 +20,7 @@ const DUMMY_MUSIC_LIST = [
     url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3',
     duration: '7:05',
     cover: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=150&auto=format&fit=crop&q=60',
+    category: 'trending',
   },
   {
     id: '3',
@@ -27,6 +29,16 @@ const DUMMY_MUSIC_LIST = [
     url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3',
     duration: '5:44',
     cover: 'https://images.unsplash.com/photo-1459749411175-04bf5292ceea?w=150&auto=format&fit=crop&q=60',
+    category: 'saved',
+  },
+  {
+    id: '4',
+    title: 'My Studio Beat',
+    artist: 'TechDJ',
+    url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3',
+    duration: '3:20',
+    cover: 'https://images.unsplash.com/photo-1484755560693-a4074577af3a?w=150&auto=format&fit=crop&q=60',
+    category: 'custom',
   }
 ];
 
@@ -64,7 +76,8 @@ export default function App() {
           aspectRatio="4:5"
           mediaType="any"
           mediaTabs={['GALLERY', 'PHOTO', 'VIDEO']}
-          maxVideoDurationMs={30000}
+          maxVideoDurationMs={60000}
+          maxStoryDurationMs={15000}
           onCancelPress={() => setEditorVisible(false)}
           onFinishExport={handleFinishExport}
           musicList={DUMMY_MUSIC_LIST}

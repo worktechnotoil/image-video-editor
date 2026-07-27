@@ -75,6 +75,7 @@ export const CameraView = forwardRef<CameraViewRef, Props>(({ facing, flashMode 
         const { error } = e.nativeEvent;
         if (error) {
           recordStartPromiseRef.current?.reject(new Error(error));
+          setRecordTrigger('idle');
         } else {
           recordStartPromiseRef.current?.resolve();
         }
