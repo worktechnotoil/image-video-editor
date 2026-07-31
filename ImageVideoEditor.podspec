@@ -15,7 +15,8 @@ Pod::Spec.new do |s|
   s.source       = { :git => "https://github.com/worktechnotoil/image-video-editor.git", :tag => "#{s.version}" }
 
   s.source_files = "ios/**/*.{h,m,mm,swift,cpp}"
-  s.resources    = "ios/frames/*.png"
+  s.resources    = ["ios/frames/*.png", "ios/assets/*.png"]
+  s.frameworks   = 'AVFoundation', 'CoreImage', 'CoreVideo', 'Vision', 'UIKit'
 
   install_modules_dependencies(s)
 end

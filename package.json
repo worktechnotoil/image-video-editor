@@ -40,7 +40,7 @@
   "scripts": {
     "example": "yarn workspace @technotoil/image-video-editor-example",
     "clean": "del-cli android/build example/android/build example/android/app/build example/ios/build lib",
-    "prepare": "bob build && tsc --project tsconfig.build.json",
+    "prepare": "npx --yes react-native-builder-bob build && tsc --project tsconfig.build.json",
     "typecheck": "tsc",
     "lint": "eslint \"**/*.{js,ts,tsx}\"",
     "build": "bob build && tsc --project tsconfig.build.json"

@@ -299,6 +299,14 @@ class CameraFilterView(context: Context, attrs: AttributeSet? = null) : View(con
     val analyzer = faceAnalyzer
     faceAnalyzer = null
     analyzer?.clearPools()
+    if (isRecording) {
+      isRecording = false
+      val vr = videoRecorder
+      videoRecorder = null
+      kotlin.concurrent.thread {
+        try { vr?.stop() } catch (e: Exception) {}
+      }
+    }
     synchronized(faceLock) {
       frame = null
     }

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Alert, StatusBar, useColorScheme, View, Text, ActivityIndicator } from 'react-native';
+import { Alert, StatusBar, useColorScheme, View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { PickScreen } from '../screens/PickScreen';
 import { CropScreen } from '../screens/CropScreen';
@@ -24,6 +24,7 @@ export interface VideoEditorProps {
   onCancelPress?: () => void;
   cameraModes?: string[];
   defaultCameraMode?: string;
+  cameraModesWithFilters?: string[];
   musicList?: MusicTrack[];
   /** Maximum number of media items user can select. Default: 1, Max allowed: 5 */
   maxSelection?: number;
@@ -56,6 +57,7 @@ export default function VideoEditor({
   onCancelPress,
   cameraModes,
   defaultCameraMode,
+  cameraModesWithFilters,
   musicList,
   maxSelection = 1,
   aspectRatio = 'free',
@@ -109,7 +111,7 @@ export default function VideoEditor({
           backgroundColor="transparent"
           translucent={true}
         />
-        <View style={{ flex: 1, display: screen === 'pick' ? 'flex' : 'none' }}>
+        <View style={{ flex: 1 }}>
           <PickScreen
             isActive={screen === 'pick'}
             items={items}
@@ -118,6 +120,7 @@ export default function VideoEditor({
             onCancelPress={onCancelPress || onClose}
             cameraModes={cameraModes}
             defaultCameraMode={defaultCameraMode}
+            cameraModesWithFilters={cameraModesWithFilters}
             maxSelection={clampedMax}
             aspectRatio={aspectRatio}
             maxVideoDurationMs={maxVideoDurationMs}
@@ -149,13 +152,13 @@ export default function VideoEditor({
               }
               console.log(`[onNext] Setting processing=true`);
               setProcessing(true);
-              
+
               try {
                 console.log(`[onNext] Starting Promise.all for ${picked.length} items`);
                 const resolvedItems = await Promise.all(
                   picked.map(item => ensureExported(item, false))
                 );
-                
+
                 console.log(`[onNext] Promise.all completed! Updating state...`);
                 setItems(resolvedItems);
                 setCurrent(resolvedItems[0]);
@@ -175,52 +178,49 @@ export default function VideoEditor({
             </View>
           )}
         </View>
-        {current && (
-          <View style={[
-            { flex: 1 },
-            screen !== 'editor' && { position: 'absolute', width: '100%', height: '100%', opacity: 0, pointerEvents: 'none', zIndex: -1 }
-          ]}>
-             <EditorScreen 
-            key={items.map(i => i.id + '_' + (i.uri || '')).join(',')}
-            isActive={screen === 'editor'}
-            items={items}
-            initialIndex={Math.max(0, items.findIndex(it => it.id === current.id))}
-            maxVideoDurationMs={maxVideoDurationMs}
-            onBack={() => {
-              setEditedMedia({});
-              const restoredItems = items.map(item => originals[item.id] || item);
-              setItems(restoredItems);
-              if (onClose) {
-                onClose();
-              } else {
-                setScreen('pick');
-              }
-            }}
-            onSaved={(updatedItems) => {
-              const newEditedMedia = { ...editedMedia };
-              const paths: string[] = [];
-              
-              updatedItems.forEach(item => {
-                newEditedMedia[item.id] = item;
-                paths.push(item.uri);
-              });
-              
-              setEditedMedia(newEditedMedia);
-              setItems(updatedItems);
+        {current && screen === 'editor' && (
+          <View style={[StyleSheet.absoluteFillObject, { zIndex: 100, elevation: 100, backgroundColor: '#000' }]}>
+            <EditorScreen
+              key={items.map(i => i.id + '_' + (i.uri || '')).join(',')}
+              isActive={screen === 'editor'}
+              items={items}
+              initialIndex={Math.max(0, items.findIndex(it => it.id === current.id))}
+              maxVideoDurationMs={maxVideoDurationMs}
+              onBack={() => {
+                setEditedMedia({});
+                const restoredItems = items.map(item => originals[item.id] || item);
+                setItems(restoredItems);
+                if (onClose) {
+                  onClose();
+                } else {
+                  setScreen('pick');
+                }
+              }}
+              onSaved={(updatedItems) => {
+                const newEditedMedia = { ...editedMedia };
+                const paths: string[] = [];
 
-              if (onFinishExport) {
-                onFinishExport(newEditedMedia, paths, updatedItems, selectedCameraMode);
-              }
-              
-              // Do not show the export screen, reset to pick screen
-              setScreen('pick');
-            }}
-            onOpenCrop={(item) => {
-              setCurrent(item);
-              setScreen('crop');
-            }}
-            musicList={musicList}
-           />
+                updatedItems.forEach(item => {
+                  newEditedMedia[item.id] = item;
+                  paths.push(item.uri);
+                });
+
+                setEditedMedia(newEditedMedia);
+                setItems(updatedItems);
+
+                if (onFinishExport) {
+                  onFinishExport(newEditedMedia, paths, updatedItems, selectedCameraMode);
+                }
+
+                // Do not show the export screen, reset to pick screen
+                setScreen('pick');
+              }}
+              onOpenCrop={(item) => {
+                setCurrent(item);
+                setScreen('crop');
+              }}
+              musicList={musicList}
+            />
           </View>
         )}
         {screen === 'crop' && current && (
@@ -267,15 +267,15 @@ export default function VideoEditor({
           />
         )}
         {screen === 'export' && (
-          <ExportScreen 
+          <ExportScreen
             editedMedia={editedMedia}
             onHome={() => {
               setEditedMedia({});
               setScreen('pick');
             }}
             onReEdit={(item) => {
-                setCurrent(item);
-                setScreen('editor');
+              setCurrent(item);
+              setScreen('editor');
             }}
           />
         )}

@@ -485,10 +485,10 @@ export function EditorScreen({
   const [musicTrimDurationMs, setMusicTrimDurationMs] = useState(30000);
   const [showDurationPicker, setShowDurationPicker] = useState(false);
   const waveAnim = useRef(new Animated.Value(0)).current;
-  
+
   const audioTrimAnim = useRef(new Animated.Value(0)).current;
   const audioTrimOffsetRef = useRef(0);
-  
+
   useEffect(() => {
     const listenerId = audioTrimAnim.addListener(({ value }) => {
       audioTrimOffsetRef.current = value;
@@ -525,19 +525,19 @@ export function EditorScreen({
     const parts = selectedMusic.duration.split(':');
     return (parseInt(parts[0]) * 60 + parseInt(parts[1])) * 1000;
   }, [selectedMusic]);
-  
+
   const activeTrimWindowMs = Math.min(musicTrimDurationMs, trackTotalMs);
-  
+
   // Scrubber takes up ~75% of the screen to leave room for context
   const SCRUBBER_FIXED_WIDTH = TRACK_CONTAINER_WIDTH * 0.75;
   const PIXELS_PER_SEC = SCRUBBER_FIXED_WIDTH / (Math.max(1, activeTrimWindowMs) / 1000);
-  
+
   const scrubberWidth = SCRUBBER_FIXED_WIDTH;
   const trackVisualWidth = (trackTotalMs / 1000) * PIXELS_PER_SEC;
   const maxTrimOffset = Math.max(0, trackVisualWidth - scrubberWidth);
   const maxTrimOffsetRef = useRef(maxTrimOffset);
   const scrubberLeft = (TRACK_CONTAINER_WIDTH - scrubberWidth) / 2;
-  
+
   useEffect(() => {
     maxTrimOffsetRef.current = maxTrimOffset;
   }, [maxTrimOffset]);
@@ -1604,7 +1604,7 @@ export function EditorScreen({
 
   useEffect(() => {
     if (item.type !== 'image') return;
-    
+
     if (previewDebounceRef.current) {
       clearTimeout(previewDebounceRef.current);
     }
@@ -2396,7 +2396,7 @@ export function EditorScreen({
                   const frameConfig = (FRAME_CONFIGS as any)[imageOptions.frame || ''] || { scale: 1, offsetY: 0 };
                   const currentScale = imageOptions.frame ? frameConfig.scale : 1;
                   const currentYOffset = imageOptions.frame ? (frameConfig.offsetY || 0) * ((dimensions.height || 1000) / (dimensions.width || 1000) * SCREEN_WIDTH) : 0;
-                  
+
                   return (
                     <VideoPreview
                       uri={item.uri}
@@ -3139,50 +3139,50 @@ export function EditorScreen({
                     contentContainerStyle={{ minWidth: '100%', justifyContent: 'center', paddingHorizontal: 20 }}
                   >
                     <View style={[styles.trimTimelineBox, { overflow: 'visible', width: timelineWidth }]}>
-                    <View style={styles.filmstrip}>
-                      {thumbnails.length === 0 ? (
-                        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                          <ActivityIndicator color="#ffffff" size="small" />
-                        </View>
-                      ) : (
-                        thumbnails.map((uri, idx) => (
-                          <Image key={idx} source={{ uri }} style={[styles.filmstripImage, { width: timelineWidth / 10 }]} />
-                        ))
-                      )}
-                      <View ref={leftOverlayRef} style={[styles.timelineOverlay, { left: 0, width: startX.current }]} />
-                      <View ref={rightOverlayRef} style={[styles.timelineOverlay, { left: endX.current, right: 0 }]} />
+                      <View style={styles.filmstrip}>
+                        {thumbnails.length === 0 ? (
+                          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                            <ActivityIndicator color="#ffffff" size="small" />
+                          </View>
+                        ) : (
+                          thumbnails.map((uri, idx) => (
+                            <Image key={idx} source={{ uri }} style={[styles.filmstripImage, { width: timelineWidth / 10 }]} />
+                          ))
+                        )}
+                        <View ref={leftOverlayRef} style={[styles.timelineOverlay, { left: 0, width: startX.current }]} />
+                        <View ref={rightOverlayRef} style={[styles.timelineOverlay, { left: endX.current, right: 0 }]} />
+                        <View
+                          ref={selectionRangeRef}
+                          style={[
+                            styles.selectionRange,
+                            { left: startX.current, width: endX.current - startX.current }
+                          ]}
+                          {...middlePan.panHandlers}
+                        />
+                      </View>
                       <View
-                        ref={selectionRangeRef}
+                        ref={leftHandleRef}
                         style={[
-                          styles.selectionRange,
-                          { left: startX.current, width: endX.current - startX.current }
+                          styles.customHandle,
+                          styles.customHandleLeft,
+                          { left: startX.current - 16 }
                         ]}
-                        {...middlePan.panHandlers}
-                      />
+                        {...startPan.panHandlers}
+                      >
+                        <View style={styles.handleBarLine} />
+                      </View>
+                      <View
+                        ref={rightHandleRef}
+                        style={[
+                          styles.customHandle,
+                          styles.customHandleRight,
+                          { left: endX.current - 16 }
+                        ]}
+                        {...endPan.panHandlers}
+                      >
+                        <View style={styles.handleBarLine} />
+                      </View>
                     </View>
-                    <View
-                      ref={leftHandleRef}
-                      style={[
-                        styles.customHandle,
-                        styles.customHandleLeft,
-                        { left: startX.current - 16 }
-                      ]}
-                      {...startPan.panHandlers}
-                    >
-                      <View style={styles.handleBarLine} />
-                    </View>
-                    <View
-                      ref={rightHandleRef}
-                      style={[
-                        styles.customHandle,
-                        styles.customHandleRight,
-                        { left: endX.current - 16 }
-                      ]}
-                      {...endPan.panHandlers}
-                    >
-                      <View style={styles.handleBarLine} />
-                    </View>
-                  </View>
                   </ScrollView>
                 </View>
               )}
@@ -3560,7 +3560,7 @@ export function EditorScreen({
                     </Text>
                   </View>
                 </View>
-                
+
                 <Pressable
                   onPress={() => setMusicPaused(!musicPaused)}
                   style={styles.musicFooterControlBtn}
@@ -3591,7 +3591,7 @@ export function EditorScreen({
                 <Image source={{ uri: selectedMusic.cover }} style={styles.audioTrimmerCover} />
                 <Text style={styles.audioTrimmerTitle}>{selectedMusic.title}</Text>
                 <Text style={styles.audioTrimmerArtist}>{selectedMusic.artist}</Text>
-                
+
                 <View style={{ width: '100%', flexDirection: 'row', alignItems: 'center', marginBottom: 8, justifyContent: 'flex-start' }}>
                   <Pressable onPress={() => setShowDurationPicker(true)}>
                     <View style={{ backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 20, width: 36, height: 36, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
@@ -3599,25 +3599,25 @@ export function EditorScreen({
                     </View>
                   </Pressable>
                   <View style={{ flex: 1, height: 2, backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 1 }} />
-                  <Pressable 
+                  <Pressable
                     onPress={() => setMusicPaused(!musicPaused)}
                     style={{ marginLeft: 12, width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' }}
                   >
                     <Ionicons name={musicPaused ? "play" : "pause"} size={16} color="#fff" />
                   </Pressable>
                 </View>
-                
+
                 <View style={[styles.audioTrimmerTrack, { overflow: 'hidden' }]} {...audioTrimmerPan.panHandlers}>
                   {/* Sliding Audio Waveform Pattern */}
-                  <Animated.View style={{ 
-                    position: 'absolute', 
-                    left: scrubberLeft, 
-                    top: 0, 
-                    bottom: 0, 
-                    flexDirection: 'row', 
-                    alignItems: 'center', 
+                  <Animated.View style={{
+                    position: 'absolute',
+                    left: scrubberLeft,
+                    top: 0,
+                    bottom: 0,
+                    flexDirection: 'row',
+                    alignItems: 'center',
                     width: trackVisualWidth,
-                    transform: [{ translateX: Animated.multiply(audioTrimAnim, -1) }] 
+                    transform: [{ translateX: Animated.multiply(audioTrimAnim, -1) }]
                   }}>
                     {Array.from({ length: Math.floor(trackVisualWidth / 6) }).map((_, i, arr) => {
                       let color = '#8a3ab9'; // Purple
@@ -3630,7 +3630,7 @@ export function EditorScreen({
                       );
                     })}
                   </Animated.View>
-                  
+
                   {/* Static Center Scrub Window */}
                   <View
                     pointerEvents="none"
@@ -3639,23 +3639,23 @@ export function EditorScreen({
                       { width: scrubberWidth, left: scrubberLeft, position: 'absolute', height: '100%' }
                     ]}
                   >
-                     <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4, justifyContent: 'space-between', overflow: 'hidden' }}>
-                        {Array.from({ length: Math.floor(scrubberWidth / 6) }).map((_, i) => (
-                          <Animated.View key={i} style={{ 
-                            width: 2, 
-                            height: waveAnim.interpolate({
-                              inputRange: [0, 0.5, 1],
-                              outputRange: [
-                                15 + (Math.cos(i) * 10), 
-                                25 + (Math.sin(i) * 15), 
-                                15 + (Math.cos(i) * 10)
-                              ]
-                            }), 
-                            backgroundColor: '#FFFFFF', 
-                            borderRadius: 1 
-                          }} />
-                        ))}
-                     </View>
+                    <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4, justifyContent: 'space-between', overflow: 'hidden' }}>
+                      {Array.from({ length: Math.floor(scrubberWidth / 6) }).map((_, i) => (
+                        <Animated.View key={i} style={{
+                          width: 2,
+                          height: waveAnim.interpolate({
+                            inputRange: [0, 0.5, 1],
+                            outputRange: [
+                              15 + (Math.cos(i) * 10),
+                              25 + (Math.sin(i) * 15),
+                              15 + (Math.cos(i) * 10)
+                            ]
+                          }),
+                          backgroundColor: '#FFFFFF',
+                          borderRadius: 1
+                        }} />
+                      ))}
+                    </View>
                   </View>
                 </View>
 
@@ -3664,9 +3664,9 @@ export function EditorScreen({
                     <Text style={styles.audioTrimmerActionText}>Cancel</Text>
                   </Pressable>
                   <Text style={styles.audioTrimmerActionText}>Audio</Text>
-                  <Pressable onPress={() => { 
-                    setShowAudioTrimmer(false); 
-                    setMusicPaused(false); 
+                  <Pressable onPress={() => {
+                    setShowAudioTrimmer(false);
+                    setMusicPaused(false);
                     // Calculate start ms based on offset
                     const progress = maxTrimOffset > 0 ? audioTrimOffsetRef.current / maxTrimOffset : 0;
                     const maxStartMs = Math.max(0, trackTotalMs - activeTrimWindowMs);
@@ -3684,18 +3684,18 @@ export function EditorScreen({
                         <Text style={{ color: '#000', fontSize: 18, fontWeight: '700', textAlign: 'center', marginBottom: 24 }}>
                           Choose clip duration
                         </Text>
-                        
+
                         <View style={{ height: 250, width: '100%', marginBottom: 24 }}>
                           <ScrollView contentContainerStyle={{ alignItems: 'center' }} showsVerticalScrollIndicator={false}>
                             {Array.from({ length: Math.max(1, Math.floor(timelineDurationMs / 1000) - 2) }, (_, i) => (i + 3) * 1000).filter(s => s <= trackTotalMs).map((s) => {
                               const isSelected = musicTrimDurationMs === s;
                               return (
-                                <Pressable 
-                                  key={s} 
+                                <Pressable
+                                  key={s}
                                   onPress={() => setMusicTrimDurationMs(s)}
-                                  style={{ 
-                                    paddingVertical: 12, 
-                                    width: '60%', 
+                                  style={{
+                                    paddingVertical: 12,
+                                    width: '60%',
                                     alignItems: 'center',
                                     borderTopWidth: isSelected ? 1 : 0,
                                     borderBottomWidth: isSelected ? 1 : 0,
@@ -3710,8 +3710,8 @@ export function EditorScreen({
                             })}
                           </ScrollView>
                         </View>
-                        
-                        <Pressable 
+
+                        <Pressable
                           style={{ backgroundColor: '#4C51F7', marginHorizontal: 24, paddingVertical: 16, borderRadius: 12, alignItems: 'center' }}
                           onPress={() => setShowDurationPicker(false)}
                         >

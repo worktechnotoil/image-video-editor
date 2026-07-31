@@ -1,6 +1,8 @@
 #import <React/RCTViewManager.h>
 #import <React/RCTUIManager.h>
 #import <React/RCTConvert.h>
+#import <React/RCTBridgeModule.h>
+#import <React/RCTEventDispatcher.h>
 #import <AVFoundation/AVFoundation.h>
 
 @interface RNCameraView : UIView <AVCapturePhotoCaptureDelegate, AVCaptureFileOutputRecordingDelegate>
@@ -416,5 +418,4 @@ RCT_EXPORT_VIEW_PROPERTY(recordTrigger, NSString)
 RCT_EXPORT_VIEW_PROPERTY(onPhotoCaptured, RCTDirectEventBlock)
 RCT_EXPORT_VIEW_PROPERTY(onRecordStarted, RCTDirectEventBlock)
 RCT_EXPORT_VIEW_PROPERTY(onRecordStopped, RCTDirectEventBlock)
-
 @end

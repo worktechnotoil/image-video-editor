@@ -70,9 +70,10 @@ interface Props {
   onCapturePressOut?: () => void;
   isRecording?: boolean;
   recordingProgressAnim?: Animated.Value;
+  showFilters?: boolean;
 }
 
-export function FilterSelector({ onSelect, onCapturePress, onCaptureLongPress, onCapturePressOut, isRecording, recordingProgressAnim }: Props): React.JSX.Element {
+export function FilterSelector({ onSelect, onCapturePress, onCaptureLongPress, onCapturePressOut, isRecording, recordingProgressAnim, showFilters = true }: Props): React.JSX.Element {
   const [selected, setSelected] = useState<FilterId>('none');
   const { width: screenWidth } = useWindowDimensions();
   const scrollViewRef = useRef<ScrollView>(null);
@@ -295,7 +296,7 @@ export function FilterSelector({ onSelect, onCapturePress, onCaptureLongPress, o
             <Text style={[styles.label, selected === 'none' && styles.labelActive]}>Normal</Text>
           </Pressable>
 
-          {FILTER_CATALOG.map((option, index) => {
+          {showFilters && FILTER_CATALOG.map((option, index) => {
             const isActive =
               option.id === selected ||
               (option.id === 'glasses' && isGlassesFilter(selected)) ||

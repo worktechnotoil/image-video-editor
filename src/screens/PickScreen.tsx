@@ -93,6 +93,7 @@ export function PickScreen({
   cameraModes = ['POST', 'STORY', 'REEL'],
   onCameraModeChange,
   defaultCameraMode,
+  cameraModesWithFilters,
   maxSelection = 1,
   aspectRatio = 'free',
   mediaType = 'any',
@@ -109,6 +110,7 @@ export function PickScreen({
   cameraModes?: string[];
   onCameraModeChange?: (mode: string) => void;
   defaultCameraMode?: string;
+  cameraModesWithFilters?: string[];
   maxSelection?: number;
   aspectRatio?: '1:1' | '4:3' | '4:5' | '16:9' | '9:16' | 'free';
   mediaType?: 'photo' | 'video' | 'any';
@@ -126,8 +128,11 @@ export function PickScreen({
   const [selectedItems, setSelectedItems] = useState<MediaItem[]>([]);
   const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
   const [library, setLibrary] = useState<MediaItem[]>([]);
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
   const [albums, setAlbums] = useState<Album[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [previewUri, setPreviewUri] = useState<string | null>(null);
   // Track if user has scrolled past the main preview
   const [isScrolledPast, setIsScrolledPast] = useState(false);
@@ -155,6 +160,7 @@ export function PickScreen({
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const overlayAnim = useRef(new Animated.Value(0)).current;
   const recordingProgressAnim = useRef(new Animated.Value(0)).current;
+  const pendingNavigationItemRef = useRef<MediaItem | null>(null);
 
   const [showCustomCamera, setShowCustomCamera] = useState(false);
   const [facing, setFacing] = useState<'front' | 'back'>('front');
@@ -179,6 +185,12 @@ export function PickScreen({
   useEffect(() => {
     if (showCustomCamera) {
       setActiveFilter('none');
+    } else {
+      isRecordingRef.current = false;
+      setIsRecording(false);
+      isStartRecordingProcessing.current = false;
+      recordingProgressAnim.stopAnimation();
+      recordingProgressAnim.setValue(0);
     }
   }, [showCustomCamera]);
 
@@ -197,6 +209,7 @@ export function PickScreen({
     setSelectedMedia(item);
     setSelectedItems([item]);
     onPicked([item]);
+    setShowCustomCamera(false);
     onNext([item]);
   };
 
@@ -231,7 +244,7 @@ export function PickScreen({
         Animated.timing(recordingProgressAnim, {
           toValue: 1,
           duration: currentMaxDuration,
-          useNativeDriver: true,
+          useNativeDriver: false,
         }).start();
 
         recordingTimeoutRef.current = setTimeout(() => {
@@ -243,6 +256,7 @@ export function PickScreen({
     } catch (err: any) {
       isRecordingRef.current = false;
       setIsRecording(false);
+      recordingProgressAnim.stopAnimation();
       recordingProgressAnim.setValue(0);
       Alert.alert('Recording Error', err?.message ?? 'Failed to start recording');
     } finally {
@@ -304,26 +318,55 @@ export function PickScreen({
     }
   };
 
-  const loadMedia = async (albumId?: string) => {
+  const loadMedia = async (albumId?: string, isLoadMore = false) => {
+    if (isLoadMore && (loadingMore || !hasMore)) return;
+
     try {
-      console.log('loadMedia called with albumId:', albumId);
-      setLoading(true);
+      if (isLoadMore) {
+        setLoadingMore(true);
+      } else {
+        setLoading(true);
+      }
+
+      const currentOffset = isLoadMore ? offset : 0;
+      console.log('loadMedia called with albumId:', albumId, 'offset:', currentOffset);
+
       const assets = await listMedia({
-        limit: 200,
-        offset: 0,
+        limit: 50,
+        offset: currentOffset,
         type: mediaType === 'photo' ? 'image' : mediaType === 'video' ? 'video' : 'all',
         albumId: albumId === 'all' ? undefined : albumId,
       });
+
       console.log('loadMedia got assets:', assets.length);
-      setLibrary(assets);
-      if (assets[0] && !multiSelect) {
-        setSelectedMedia(assets[0]);
+
+      if (assets.length < 50) {
+        setHasMore(false);
+      } else {
+        setHasMore(true);
       }
+
+      if (isLoadMore) {
+        setLibrary(prev => [...prev, ...assets]);
+      } else {
+        setLibrary(assets);
+        if (assets[0] && !multiSelect) {
+          setSelectedMedia(assets[0]);
+        }
+      }
+
+      setOffset(currentOffset + assets.length);
     } catch (err: any) {
       console.error('loadMedia error:', err);
-      Alert.alert('Library error', err?.message ?? 'Failed to load library.');
+      if (!isLoadMore) {
+        Alert.alert('Library error', err?.message ?? 'Failed to load library.');
+      }
     } finally {
-      setLoading(false);
+      if (isLoadMore) {
+        setLoadingMore(false);
+      } else {
+        setLoading(false);
+      }
     }
   };
 
@@ -384,7 +427,7 @@ export function PickScreen({
     Animated.timing(overlayAnim, {
       toValue: showOverlay ? 1 : 0,
       duration: 200,
-      useNativeDriver: true,
+      useNativeDriver: false,
     }).start();
   }, [showOverlay]);
 
@@ -453,8 +496,8 @@ export function PickScreen({
     }
 
     Animated.sequence([
-      Animated.timing(scaleAnim, { toValue: 0.97, duration: 80, useNativeDriver: true }),
-      Animated.timing(scaleAnim, { toValue: 1, duration: 80, useNativeDriver: true }),
+      Animated.timing(scaleAnim, { toValue: 0.97, duration: 80, useNativeDriver: false }),
+      Animated.timing(scaleAnim, { toValue: 1, duration: 80, useNativeDriver: false }),
     ]).start();
   };
 
@@ -465,8 +508,8 @@ export function PickScreen({
       setSelectedMedia(item);
 
       Animated.sequence([
-        Animated.timing(scaleAnim, { toValue: 0.97, duration: 80, useNativeDriver: true }),
-        Animated.timing(scaleAnim, { toValue: 1, duration: 80, useNativeDriver: true }),
+        Animated.timing(scaleAnim, { toValue: 0.97, duration: 80, useNativeDriver: false }),
+        Animated.timing(scaleAnim, { toValue: 1, duration: 80, useNativeDriver: false }),
       ]).start();
     }
   };
@@ -790,6 +833,17 @@ export function PickScreen({
           windowSize={11}
           initialNumToRender={4}
           maxToRenderPerBatch={4}
+          onEndReached={() => {
+            loadMedia(activeAlbum.id, true);
+          }}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={
+            loadingMore ? (
+              <View style={{ padding: 20, alignItems: 'center' }}>
+                <Text style={{ color: '#aaa', fontSize: 14 }}>Loading more...</Text>
+              </View>
+            ) : null
+          }
           ListEmptyComponent={
             <View style={styles.empty}>
               <Text style={styles.emptyText}>{loading ? 'Loading…' : 'No media found'}</Text>
@@ -829,7 +883,7 @@ export function PickScreen({
                     </Pressable>
                   ) : (
                     <Image
-                      source={{ uri: previewUri ?? selectedMedia?.uri }}
+                      source={{ uri: previewUri ?? (selectedMedia?.uri.startsWith('ph://') ? selectedMedia?.thumbnailUri : selectedMedia?.uri) }}
                       style={[styles.previewImage, cropMode === '1:1' ? styles.squareCrop : styles.originalCrop]}
                       resizeMode={isRatioLocked ? 'cover' : (cropMode === '1:1' ? 'cover' : 'contain')}
                     />
@@ -921,112 +975,115 @@ export function PickScreen({
 
       <Modal
         visible={showCustomCamera}
-        animationType="slide"
+        animationType="none"
         transparent={false}
         onRequestClose={() => setShowCustomCamera(false)}
       >
-        <View style={styles.cameraContainer}>
-          <CameraFilterView
-            ref={cameraRef}
-            filter={activeFilter}
-            facing={facing}
-            style={StyleSheet.absoluteFillObject}
-          />
-
-
-
-          {/* Rule of Thirds Grid Overlay */}
-          <View style={styles.cameraGridOverlay} pointerEvents="none">
-            <View style={styles.gridRow}>
-              <View style={styles.gridCell} />
-              <View style={[styles.gridCell, styles.gridCellMiddleCol]} />
-              <View style={styles.gridCell} />
-            </View>
-            <View style={[styles.gridRow, styles.gridRowMiddleRow]}>
-              <View style={styles.gridCell} />
-              <View style={[styles.gridCell, styles.gridCellMiddleCol]} />
-              <View style={styles.gridCell} />
-            </View>
-            <View style={styles.gridRow}>
-              <View style={styles.gridCell} />
-              <View style={[styles.gridCell, styles.gridCellMiddleCol]} />
-              <View style={styles.gridCell} />
-            </View>
-          </View>
-
-          {/* Top Controls */}
-          <View style={[styles.cameraHeader, { top: Math.max(insets.top, 16) }]}>
-            <Pressable style={styles.cameraCloseBtn} onPress={() => setShowCustomCamera(false)}>
-              <Ionicons name="close" size={22} color="#fff" />
-            </Pressable>
-
-            <Pressable
-              style={[styles.cameraFlashContainer, facing === 'front' && { opacity: 0.3 }]}
-              onPress={() => setFlashMode((f) => (f === 'on' ? 'off' : 'on'))}
-              disabled={facing === 'front'}
-            >
-              <Ionicons
-                name={flashMode === 'on' && facing === 'back' ? 'flash' : 'flash-off'}
-                size={22}
-                color={flashMode === 'on' && facing === 'back' ? '#FFD700' : 'rgba(255,255,255,0.4)'}
-              />
-            </Pressable>
-          </View>
-
-          <View
-            style={[styles.cameraCaptureContainer, { bottom: Math.max(insets.bottom + 90, 90) }]}
-            pointerEvents="box-none"
-          >
-            <FilterSelector
-              onSelect={setActiveFilter}
-              onCapturePress={handlePress}
-              onCaptureLongPress={handleLongPress}
-              onCapturePressOut={handlePressOut}
-              isRecording={isRecording}
-              recordingProgressAnim={recordingProgressAnim}
+        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#000' }]}>
+          <View style={styles.cameraContainer}>
+            <CameraFilterView
+              ref={cameraRef}
+              filter={activeFilter}
+              facing={facing}
+              style={StyleSheet.absoluteFillObject}
             />
-          </View>
 
-          {/* Unified Black Bottom Bar */}
-          <View style={[styles.unifiedBottomBar, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-            <View style={styles.unifiedBottomRow}>
-              {/* Gallery (Left) */}
-              <View style={styles.cameraGalleryPreview} pointerEvents="auto">
-                {library.length > 1 && library[1].thumbnailUri ? (
-                  <Image source={{ uri: library[1].thumbnailUri }} style={styles.cameraGalleryThumb} />
-                ) : (
-                  <View style={styles.cameraGalleryThumbPlaceholder} />
-                )}
+
+
+            {/* Rule of Thirds Grid Overlay */}
+            <View style={styles.cameraGridOverlay} pointerEvents="none">
+              <View style={styles.gridRow}>
+                <View style={styles.gridCell} />
+                <View style={[styles.gridCell, styles.gridCellMiddleCol]} />
+                <View style={styles.gridCell} />
               </View>
-
-              {/* Modes (Center) */}
-              <View style={styles.cameraModeBar}>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.cameraModeScrollContainer}
-                >
-                  {cameraModes.map((mode) => {
-                    const isActive = mode === activeCameraMode;
-                    return (
-                      <Pressable key={mode} onPress={() => setActiveCameraMode(mode)}>
-                        <Text style={isActive ? styles.cameraModeTextActive : styles.cameraModeTextInactive}>
-                          {mode}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </ScrollView>
+              <View style={[styles.gridRow, styles.gridRowMiddleRow]}>
+                <View style={styles.gridCell} />
+                <View style={[styles.gridCell, styles.gridCellMiddleCol]} />
+                <View style={styles.gridCell} />
               </View>
+              <View style={styles.gridRow}>
+                <View style={styles.gridCell} />
+                <View style={[styles.gridCell, styles.gridCellMiddleCol]} />
+                <View style={styles.gridCell} />
+              </View>
+            </View>
 
-              {/* Flip (Right) */}
-              <Pressable
-                style={styles.flipCameraBtn}
-                onPress={() => setFacing((f) => (f === 'front' ? 'back' : 'front'))}
-                pointerEvents="auto"
-              >
-                <Ionicons name="camera-reverse-outline" size={26} color="#fff" />
+            {/* Top Controls */}
+            <View style={[styles.cameraHeader, { top: Math.max(insets.top, 16) }]}>
+              <Pressable style={styles.cameraCloseBtn} onPress={() => setShowCustomCamera(false)}>
+                <Ionicons name="close" size={22} color="#fff" />
               </Pressable>
+
+              <Pressable
+                style={[styles.cameraFlashContainer, facing === 'front' && { opacity: 0.3 }]}
+                onPress={() => setFlashMode((f) => (f === 'on' ? 'off' : 'on'))}
+                disabled={facing === 'front'}
+              >
+                <Ionicons
+                  name={flashMode === 'on' && facing === 'back' ? 'flash' : 'flash-off'}
+                  size={22}
+                  color={flashMode === 'on' && facing === 'back' ? '#FFD700' : 'rgba(255,255,255,0.4)'}
+                />
+              </Pressable>
+            </View>
+
+            <View
+              style={[styles.cameraCaptureContainer, { bottom: Math.max(insets.bottom + 90, 90) }]}
+              pointerEvents="box-none"
+            >
+              <FilterSelector
+                onSelect={setActiveFilter}
+                onCapturePress={handlePress}
+                onCaptureLongPress={handleLongPress}
+                onCapturePressOut={handlePressOut}
+                isRecording={isRecording}
+                recordingProgressAnim={recordingProgressAnim}
+                showFilters={!cameraModesWithFilters || cameraModesWithFilters.includes(activeCameraMode)}
+              />
+            </View>
+
+            {/* Unified Black Bottom Bar */}
+            <View style={[styles.unifiedBottomBar, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+              <View style={styles.unifiedBottomRow}>
+                {/* Gallery (Left) */}
+                <View style={styles.cameraGalleryPreview} pointerEvents="auto">
+                  {library.length > 1 && library[1].thumbnailUri ? (
+                    <Image source={{ uri: library[1].thumbnailUri }} style={styles.cameraGalleryThumb} />
+                  ) : (
+                    <View style={styles.cameraGalleryThumbPlaceholder} />
+                  )}
+                </View>
+
+                {/* Modes (Center) */}
+                <View style={styles.cameraModeBar}>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.cameraModeScrollContainer}
+                  >
+                    {cameraModes.map((mode) => {
+                      const isActive = mode === activeCameraMode;
+                      return (
+                        <Pressable key={mode} onPress={() => setActiveCameraMode(mode)}>
+                          <Text style={isActive ? styles.cameraModeTextActive : styles.cameraModeTextInactive}>
+                            {mode}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+
+                {/* Flip (Right) */}
+                <Pressable
+                  style={styles.flipCameraBtn}
+                  onPress={() => setFacing((f) => (f === 'front' ? 'back' : 'front'))}
+                  pointerEvents="auto"
+                >
+                  <Ionicons name="camera-reverse-outline" size={26} color="#fff" />
+                </Pressable>
+              </View>
             </View>
           </View>
         </View>

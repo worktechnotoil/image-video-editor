@@ -44,6 +44,8 @@
                                              selector:@selector(playerItemDidEnd:)
                                                  name:AVPlayerItemDidPlayToEndTimeNotification
                                                object:nil];
+                                               
+    self.userInteractionEnabled = NO;
   }
   return self;
 }

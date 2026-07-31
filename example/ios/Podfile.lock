@@ -3,7 +3,7 @@ PODS:
   - hermes-engine (250829098.0.7):
     - hermes-engine/Pre-built (= 250829098.0.7)
   - hermes-engine/Pre-built (250829098.0.7)
-  - ImageVideoEditor (0.1.11):
+  - ImageVideoEditor (0.1.13):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -2265,7 +2265,7 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   FBLazyVector: c12d2108050e27952983d565a232f6f7b1ad5e69
   hermes-engine: ed9b9bf3bff5b4b0a857b8b9c156590c7ae75464
-  ImageVideoEditor: 80a7fed4d1a4c8655acae5cfaae00b3fd29ffe12
+  ImageVideoEditor: 59c3bf0b00134b5d581b049178b6665cef559660
   RCTDeprecation: 3280799c14232a56e5a44f92981a8ee33bc69fd9
   RCTRequired: 9854a51b0f65ccf43ea0b744df4d70fce339db32
   RCTSwiftUI: 96986e49a4fdc2c2103929dee2641e1b57edf33d
@@ -2343,6 +2343,6 @@ SPEC CHECKSUMS:
   TOCropViewController: 797deaf39c90e6e9ddd848d88817f6b9a8a09888
   Yoga: 772166513f9cd2d61a6251d0dacbbfaa5b537479
 
-PODFILE CHECKSUM: dd199c8670c8d3c1f56ac4ad9892cd9a5eed5b59
+PODFILE CHECKSUM: 8e5fc2e82181db7e5fdf2f152c7fcd241b74ad21
 
 COCOAPODS: 1.16.2

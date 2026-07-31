@@ -96,6 +96,7 @@ export default function App() {
         <VideoEditor
           headerTitle="Create New Post"
           cameraModes={['POST', 'STORY', 'REEL']}
+          cameraModesWithFilters={['STORY', 'REEL']}
           defaultCameraMode="REEL"
           mediaType="any"
           mediaTabs={['GALLERY', 'PHOTO', 'VIDEO']}
@@ -133,6 +134,7 @@ const styles = StyleSheet.create({
 | `headerTitle` | `string` | `"New post"` | Title text displayed in the header. |
 | `cameraModes` | `Array<'POST' \| 'STORY' \| 'REEL'>` | `['POST', 'STORY', 'REEL']` | Active shooting modes allowed. |
 | `defaultCameraMode` | `'POST' \| 'STORY' \| 'REEL'` | `"REEL"` | Initial shooting mode when opening. |
+| `cameraModesWithFilters` | `string[]` | `undefined` | Defines which specific camera modes (e.g., `['STORY', 'REEL']`) will display the AR filter selector. When the user switches to a camera mode not included in this array, the AR filters UI will automatically hide, leaving only the standard capture button. If omitted, AR filters will be visible across all camera modes by default. |
 | `musicList` | `MusicTrack[]` | `[]` | List of audio tracks available to overlay on videos. |
 | `maxSelection` | `number` | `1` | Maximum number of media items user can select. Max allowed is 5. |
 | `aspectRatio` | `'1:1' \| '4:3' \| '4:5' \| '16:9' \| '9:16' \| 'free'` | `'free'` | Enforce a fixed aspect ratio for image/video preview. |

@@ -338,10 +338,15 @@ RCT_REMAP_METHOD(editImage,
     outData = UIImageJPEGRepresentation(workingImage, 0.9);
   }
   if (outData) {
-    [outData writeToURL:outUrl atomically:YES];
-    resolve(outUrl.absoluteString);
+    NSError *error = nil;
+    BOOL success = [outData writeToURL:outUrl options:NSDataWritingAtomic error:&error];
+    if (success) {
+        resolve(outUrl.absoluteString);
+    } else {
+        reject(@"write_failed", @"Failed to write edited image to disk", error);
+    }
   } else {
-    reject(@"write_failed", @"Failed to write edited image to disk", nil);
+    reject(@"encode_failed", @"Failed to encode edited image data", nil);
   }
 }
 
@@ -920,6 +925,11 @@ RCT_REMAP_METHOD(trimVideo,
         while (!input.isReadyForMoreMediaData && retryCount < 50) {
             [NSThread sleepForTimeInterval:0.01];
             retryCount++;
+        }
+        
+        if (!input.isReadyForMoreMediaData) {
+            NSLog(@"[RNMediaEditor] Warning: Dropping frame %ld because input is not ready", (long)i);
+            continue;
         }
         
         CVPixelBufferRef buffer = [self pixelBufferFromCGImage:cgImage width:width height:height];

@@ -174,7 +174,7 @@ RCT_REMAP_METHOD(listAlbums,
       CGSize targetSize = CGSizeMake(240, 240);
       [manager requestImageForAsset:asset targetSize:targetSize contentMode:PHImageContentModeAspectFill options:thumbOptions resultHandler:^(UIImage * _Nullable image, NSDictionary * _Nullable info) {
         if (image) {
-          NSData *data = UIImageJPEGRepresentation(image, 0.8);
+          NSData *data = UIImageJPEGRepresentation(image, 0.6);
           NSString *fileName = [NSString stringWithFormat:@"thumb_%@.jpg", [[NSUUID UUID] UUIDString]];
           NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:fileName];
           [data writeToFile:path atomically:YES];
@@ -196,7 +196,7 @@ RCT_REMAP_METHOD(listAlbums,
             if (imageRef) {
               UIImage *image = [UIImage imageWithCGImage:imageRef];
               CGImageRelease(imageRef);
-              NSData *data = UIImageJPEGRepresentation(image, 0.8);
+              NSData *data = UIImageJPEGRepresentation(image, 0.6);
               NSString *fileName = [NSString stringWithFormat:@"thumb_%@.jpg", [[NSUUID UUID] UUIDString]];
               NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:fileName];
               [data writeToFile:path atomically:YES];
@@ -208,25 +208,11 @@ RCT_REMAP_METHOD(listAlbums,
         dispatch_semaphore_wait(sema, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)));
       }
 
-      __block NSString *fullUri = nil;
-      if (asset.mediaType == PHAssetMediaTypeVideo) {
-        // Return a ph:// URI for videos so we do not attempt to read system files directly or transcode in listMedia
-        fullUri = [NSString stringWithFormat:@"ph://%@", asset.localIdentifier];
-      } else {
-        [manager requestImageForAsset:asset targetSize:PHImageManagerMaximumSize contentMode:PHImageContentModeAspectFit options:thumbOptions resultHandler:^(UIImage * _Nullable image, NSDictionary * _Nullable info) {
-          if (image) {
-            NSData *data = UIImageJPEGRepresentation(image, 0.9);
-            NSString *fileName = [NSString stringWithFormat:@"full_%@.jpg", [[NSUUID UUID] UUIDString]];
-            NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:fileName];
-            [data writeToFile:path atomically:YES];
-            fullUri = [NSURL fileURLWithPath:path].absoluteString;
-          }
-        }];
-      }
+      NSString *uri = [NSString stringWithFormat:@"ph://%@", asset.localIdentifier];
 
       NSDictionary *item = @{
         @"id": asset.localIdentifier,
-        @"uri": fullUri ?: thumbUri ?: @"",
+        @"uri": uri,
         @"thumbnailUri": thumbUri ?: @"",
         @"type": mediaType,
         @"durationMs": @(asset.duration * 1000.0)

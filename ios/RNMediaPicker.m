@@ -71,16 +71,16 @@ RCT_REMAP_METHOD(pickMedia,
     if ([provider hasItemConformingToTypeIdentifier:UTTypeMovie.identifier]) {
       dispatch_group_enter(group);
       [provider loadFileRepresentationForTypeIdentifier:UTTypeMovie.identifier completionHandler:^(NSURL * _Nullable url, NSError * _Nullable error) {
-        if (error) {
-          if (reject) reject(@"load_failed", error.localizedDescription, error);
-          dispatch_group_leave(group);
-          return;
-        }
-        if (!url) {
+        if (error || !url) {
+          NSLog(@"[RNMediaPicker] Failed to load video: %@", error.localizedDescription);
           dispatch_group_leave(group);
           return;
         }
         NSURL *tempUrl = [self copyToTemp:url prefix:@"video_"];
+        if (!tempUrl) {
+          dispatch_group_leave(group);
+          return;
+        }
         AVAsset *asset = [AVAsset assetWithURL:tempUrl];
         double durationMs = CMTimeGetSeconds(asset.duration) * 1000.0;
 
@@ -96,16 +96,16 @@ RCT_REMAP_METHOD(pickMedia,
     } else if ([provider canLoadObjectOfClass:UIImage.class]) {
       dispatch_group_enter(group);
       [provider loadObjectOfClass:UIImage.class completionHandler:^(UIImage * _Nullable image, NSError * _Nullable error) {
-        if (error) {
-          if (reject) reject(@"load_failed", error.localizedDescription, error);
-          dispatch_group_leave(group);
-          return;
-        }
-        if (!image) {
+        if (error || !image) {
+          NSLog(@"[RNMediaPicker] Failed to load image: %@", error.localizedDescription);
           dispatch_group_leave(group);
           return;
         }
         NSURL *tempUrl = [self writeImageToTemp:image];
+        if (!tempUrl) {
+          dispatch_group_leave(group);
+          return;
+        }
         NSDictionary *item = @{
           @"id": [NSUUID UUID].UUIDString,
           @"uri": tempUrl.absoluteString,
@@ -129,16 +129,20 @@ RCT_REMAP_METHOD(pickMedia,
   NSString *ext = url.pathExtension.length ? url.pathExtension : @"mp4";
   NSURL *dest = [dir URLByAppendingPathComponent:[NSString stringWithFormat:@"%@%@.%@", prefix, [NSUUID UUID].UUIDString, ext]];
   [NSFileManager.defaultManager removeItemAtURL:dest error:nil];
-  [NSFileManager.defaultManager copyItemAtURL:url toURL:dest error:nil];
-  return dest;
+  if ([NSFileManager.defaultManager copyItemAtURL:url toURL:dest error:nil]) {
+      return dest;
+  }
+  return nil;
 }
 
 - (NSURL *)writeImageToTemp:(UIImage *)image {
   NSURL *dir = NSTemporaryDirectory().length ? [NSURL fileURLWithPath:NSTemporaryDirectory()] : [NSFileManager.defaultManager temporaryDirectory];
   NSURL *dest = [dir URLByAppendingPathComponent:[NSString stringWithFormat:@"image_%@.jpg", [NSUUID UUID].UUIDString]];
   NSData *data = UIImageJPEGRepresentation(image, 0.92);
-  [data writeToURL:dest atomically:YES];
-  return dest;
+  if (data && [data writeToURL:dest atomically:YES]) {
+      return dest;
+  }
+  return nil;
 }
 
 @end

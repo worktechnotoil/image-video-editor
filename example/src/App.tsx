@@ -59,6 +59,7 @@ export default function App() {
         <VideoEditor
           headerTitle="New post"
           cameraModes={['POST', 'STORY', 'REEL']}
+          cameraModesWithFilters={['STORY', 'REEL']}
           defaultCameraMode="REEL"
           maxSelection={5}
           aspectRatio="4:5"

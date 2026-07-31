@@ -175,7 +175,7 @@ export function GalleryScreen({
           ) : (
             <Pressable style={styles.previewImage} onPress={() => onSelect(selectedMedia)}>
               <Image
-                source={{ uri: previewUri ?? selectedMedia.uri }}
+                source={{ uri: previewUri ?? (selectedMedia.uri.startsWith('ph://') ? selectedMedia.thumbnailUri : selectedMedia.uri) }}
                 style={[styles.previewImage, cropMode === '1:1' ? styles.squareCrop : styles.originalCrop]}
                 resizeMode={cropMode === '1:1' ? 'cover' : 'contain'}
               />

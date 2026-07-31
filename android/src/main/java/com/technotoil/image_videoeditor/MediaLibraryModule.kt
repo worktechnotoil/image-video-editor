@@ -26,7 +26,9 @@ class MediaLibraryModule(private val reactContext: ReactApplicationContext) :
 
   @ReactMethod
   fun requestAccess(promise: Promise) {
-    val permissions = if (android.os.Build.VERSION.SDK_INT >= 33) {
+    val permissions = if (android.os.Build.VERSION.SDK_INT >= 34) {
+      arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
+    } else if (android.os.Build.VERSION.SDK_INT >= 33) {
       arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
     } else {
       arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
@@ -136,19 +138,25 @@ class MediaLibraryModule(private val reactContext: ReactApplicationContext) :
       val sortOrder = "${MediaStore.Files.FileColumns.DATE_ADDED} DESC"
 
       val queryUri = MediaStore.Files.getContentUri("external")
-      val cursor = resolver.query(queryUri, projection, selection, null, sortOrder)
+      
+      val cursor = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        val bundle = android.os.Bundle().apply {
+          putInt(android.content.ContentResolver.QUERY_ARG_LIMIT, limit)
+          putInt(android.content.ContentResolver.QUERY_ARG_OFFSET, offset)
+          putString(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION, selection)
+          putString(android.content.ContentResolver.QUERY_ARG_SQL_SORT_ORDER, sortOrder)
+        }
+        resolver.query(queryUri, projection, bundle, null)
+      } else {
+        resolver.query(queryUri, projection, selection, null, "$sortOrder LIMIT $limit OFFSET $offset")
+      }
 
       if (cursor != null) {
         val idCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns._ID)
         val typeCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.MEDIA_TYPE)
         val durationCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns.DURATION)
 
-        var skipped = 0
-        while (cursor.moveToNext() && items.size() < limit) {
-          if (skipped < offset) {
-            skipped++
-            continue
-          }
+        while (cursor.moveToNext()) {
           val id = cursor.getLong(idCol)
           val mediaType = cursor.getInt(typeCol)
           var duration = cursor.getLong(durationCol)

@@ -22,19 +22,10 @@ export const CameraFilterView = forwardRef<CameraFilterViewRef, CameraFilterView
   useImperativeHandle(ref, () => ({
     capturePhoto: async () => {
       const node = findNodeHandle(nativeRef.current) || -1;
-
-      let uri;
-      if (Platform.OS === 'ios') {
-        if (!NativeModules.CameraFilterViewManager?.capturePhoto) {
-          return { uri: "file:///dummy_captured_photo.jpg", width: 720, height: 1280 };
-        }
-        uri = await NativeModules.CameraFilterViewManager.capturePhoto(node);
-      } else {
-        if (!CameraFilterModule) {
-          return { uri: "file:///dummy_captured_photo.jpg", width: 720, height: 1280 };
-        }
-        uri = await CameraFilterModule.capturePhoto(node);
+      if (!CameraFilterModule) {
+        return { uri: "file:///dummy_captured_photo.jpg", width: 720, height: 1280 };
       }
+      const uri = await CameraFilterModule.capturePhoto(node);
       return {
         uri,
         width: 720,
@@ -43,23 +34,13 @@ export const CameraFilterView = forwardRef<CameraFilterViewRef, CameraFilterView
     },
     startRecording: async () => {
       const node = findNodeHandle(nativeRef.current) || -1;
-      if (Platform.OS === 'ios') {
-        if (!NativeModules.CameraFilterViewManager?.startRecording) return Promise.resolve();
-        return NativeModules.CameraFilterViewManager.startRecording(node);
-      } else {
-        if (!CameraFilterModule) return Promise.resolve();
-        return CameraFilterModule.startRecording(node);
-      }
+      if (!CameraFilterModule) return Promise.resolve();
+      return CameraFilterModule.startRecording(node);
     },
     stopRecording: async () => {
       const node = findNodeHandle(nativeRef.current) || -1;
-      if (Platform.OS === 'ios') {
-        if (!NativeModules.CameraFilterViewManager?.stopRecording) return Promise.resolve("file:///dummy_recorded_path.mp4");
-        return NativeModules.CameraFilterViewManager.stopRecording(node);
-      } else {
-        if (!CameraFilterModule) return Promise.resolve("file:///dummy_recorded_path.mp4");
-        return CameraFilterModule.stopRecording(node);
-      }
+      if (!CameraFilterModule) return Promise.resolve("file:///dummy_recorded_path.mp4");
+      return CameraFilterModule.stopRecording(node);
     }
   }));
 
