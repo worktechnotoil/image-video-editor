@@ -425,18 +425,34 @@ class MediaEditorModule(private val reactContext: ReactApplicationContext) :
           hasVideoAudio = "yes" == hasAudioStr
           retriever.release()
         } catch (e: Exception) {}
+      } else {
+        if (options.hasKey("jsImgW") && options.getDouble("jsImgW") > 0) {
+            videoWidth = options.getDouble("jsImgW").toInt()
+        }
+        if (options.hasKey("jsImgH") && options.getDouble("jsImgH") > 0) {
+            videoHeight = options.getDouble("jsImgH").toInt()
+        }
       }
 
       var textOverlayFile: File? = null
       val overlays = if (options.hasKey("overlays")) options.getArray("overlays") else null
       if (overlays != null && overlays.size() > 0) {
          try {
-           val bitmap = Bitmap.createBitmap(videoWidth, videoHeight, Bitmap.Config.ARGB_8888)
+           val rotateDegrees = if (options.hasKey("rotateDegrees")) options.getInt("rotateDegrees") else 0
+           var finalVideoWidth = videoWidth
+           var finalVideoHeight = videoHeight
+           val rotDeg = (rotateDegrees % 360 + 360) % 360
+           if (rotDeg == 90 || rotDeg == 270) {
+             finalVideoWidth = videoHeight
+             finalVideoHeight = videoWidth
+           }
+
+           val bitmap = Bitmap.createBitmap(finalVideoWidth, finalVideoHeight, Bitmap.Config.ARGB_8888)
            val canvas = Canvas(bitmap)
            val jsW = if (options.hasKey("jsImgW")) options.getDouble("jsImgW") else 0.0
            val jsH = if (options.hasKey("jsImgH")) options.getDouble("jsImgH") else 0.0
-           val scaleX = if (jsW > 0) (videoWidth / jsW).toFloat() else 1f
-           val scaleY = if (jsH > 0) (videoHeight / jsH).toFloat() else 1f
+           val scaleX = if (jsW > 0) (finalVideoWidth / jsW).toFloat() else 1f
+           val scaleY = if (jsH > 0) (finalVideoHeight / jsH).toFloat() else 1f
            for (i in 0 until overlays.size()) {
                val o = overlays.getMap(i) ?: continue
                val text = o.getString("text") ?: continue
@@ -451,14 +467,14 @@ class MediaEditorModule(private val reactContext: ReactApplicationContext) :
                    this.typeface = android.graphics.Typeface.DEFAULT_BOLD
                }
                val staticLayout = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                   android.text.StaticLayout.Builder.obtain(text, 0, text.length, textPaint, videoWidth)
+                   android.text.StaticLayout.Builder.obtain(text, 0, text.length, textPaint, finalVideoWidth)
                        .setAlignment(android.text.Layout.Alignment.ALIGN_NORMAL)
                        .setLineSpacing(0f, 1f)
                        .setIncludePad(false)
                        .build()
                } else {
                    @Suppress("DEPRECATION")
-                   android.text.StaticLayout(text, textPaint, videoWidth, android.text.Layout.Alignment.ALIGN_NORMAL, 1f, 0f, false)
+                   android.text.StaticLayout(text, textPaint, finalVideoWidth, android.text.Layout.Alignment.ALIGN_NORMAL, 1f, 0f, false)
                }
                canvas.save()
                canvas.translate(x, y)
@@ -575,8 +591,7 @@ class MediaEditorModule(private val reactContext: ReactApplicationContext) :
 
       // 7. Text overlays
       if (textOverlayFile != null) {
-        filterSteps.add("[${textInputIndex}:v]$currentLabel" + "scale2ref=w=iw:h=ih[text_scaled][v_text_base]")
-        filterSteps.add("[v_text_base][text_scaled]overlay=0:0:shortest=1:format=auto[v_text]")
+        filterSteps.add("${currentLabel}[${textInputIndex}:v]overlay=0:0:shortest=1:format=auto[v_text]")
         currentLabel = "[v_text]"
       }
 
@@ -641,11 +656,15 @@ class MediaEditorModule(private val reactContext: ReactApplicationContext) :
       }
       
       if (frameFile != null) {
+        cmdList.add("-loop")
+        cmdList.add("1")
         cmdList.add("-i")
         cmdList.add(frameFile.absolutePath)
       }
 
       if (textOverlayFile != null) {
+        cmdList.add("-loop")
+        cmdList.add("1")
         cmdList.add("-i")
         cmdList.add(textOverlayFile.absolutePath)
       }

@@ -178,8 +178,8 @@ export default function VideoEditor({
             </View>
           )}
         </View>
-        {current && screen === 'editor' && (
-          <View style={[StyleSheet.absoluteFillObject, { zIndex: 100, elevation: 100, backgroundColor: '#000' }]}>
+        {current && screen !== 'pick' && (
+          <View style={[StyleSheet.absoluteFillObject, { zIndex: 100, elevation: 100, backgroundColor: '#000', display: screen === 'editor' ? 'flex' : 'none' }]}>
             <EditorScreen
               key={items.map(i => i.id + '_' + (i.uri || '')).join(',')}
               isActive={screen === 'editor'}
@@ -224,60 +224,64 @@ export default function VideoEditor({
           </View>
         )}
         {screen === 'crop' && current && (
-          <CropScreen
-            key={current.id + (current.uri || '')}
-            item={current}
-            aspectRatio={aspectRatio}
-            maxVideoDurationMs={maxVideoDurationMs}
-            onBack={() => setScreen('editor')}
-            onSave={(uri, thumbnailUri, durationMs) => {
-              const updated = {
-                ...current,
-                uri,
-                thumbnailUri: thumbnailUri ?? current.thumbnailUri,
-                durationMs: durationMs ?? current.durationMs
-              };
-              delete updated.width;
-              delete updated.height;
+          <View style={[StyleSheet.absoluteFillObject, { zIndex: 100, elevation: 100, backgroundColor: '#000' }]}>
+            <CropScreen
+              key={current.id + (current.uri || '')}
+              item={current}
+              aspectRatio={aspectRatio}
+              maxVideoDurationMs={maxVideoDurationMs}
+              onBack={() => setScreen('editor')}
+              onSave={(uri, thumbnailUri, durationMs) => {
+                const updated = {
+                  ...current,
+                  uri,
+                  thumbnailUri: thumbnailUri ?? current.thumbnailUri,
+                  durationMs: durationMs ?? current.durationMs
+                };
+                delete updated.width;
+                delete updated.height;
 
-              setEditedMedia((prev: Record<string, MediaItem>) => ({ ...prev, [current.id]: updated }));
+                setEditedMedia((prev: Record<string, MediaItem>) => ({ ...prev, [current.id]: updated }));
 
-              setItems((prev: MediaItem[]) =>
-                prev.map((it) => it.id === current.id ? updated : it)
-              );
-
-              setCurrent(updated);
-              setScreen('editor');
-            }}
-            onReset={() => {
-              const original = originals[current.id];
-              if (original) {
-                const updated = { ...original };
-                setEditedMedia((prev: Record<string, MediaItem>) => {
-                  const next = { ...prev };
-                  delete next[current.id];
-                  return next;
-                });
                 setItems((prev: MediaItem[]) =>
                   prev.map((it) => it.id === current.id ? updated : it)
                 );
+
                 setCurrent(updated);
-              }
-            }}
-          />
+                setScreen('editor');
+              }}
+              onReset={() => {
+                const original = originals[current.id];
+                if (original) {
+                  const updated = { ...original };
+                  setEditedMedia((prev: Record<string, MediaItem>) => {
+                    const next = { ...prev };
+                    delete next[current.id];
+                    return next;
+                  });
+                  setItems((prev: MediaItem[]) =>
+                    prev.map((it) => it.id === current.id ? updated : it)
+                  );
+                  setCurrent(updated);
+                }
+              }}
+            />
+          </View>
         )}
         {screen === 'export' && (
-          <ExportScreen
-            editedMedia={editedMedia}
-            onHome={() => {
-              setEditedMedia({});
-              setScreen('pick');
-            }}
-            onReEdit={(item) => {
-              setCurrent(item);
-              setScreen('editor');
-            }}
-          />
+          <View style={[StyleSheet.absoluteFillObject, { zIndex: 100, elevation: 100, backgroundColor: '#000' }]}>
+            <ExportScreen
+              editedMedia={editedMedia}
+              onHome={() => {
+                setEditedMedia({});
+                setScreen('pick');
+              }}
+              onReEdit={(item) => {
+                setCurrent(item);
+                setScreen('editor');
+              }}
+            />
+          </View>
         )}
       </SafeAreaView>
     </SafeAreaProvider>

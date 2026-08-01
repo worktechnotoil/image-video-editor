@@ -226,6 +226,7 @@ export function EditorScreen({
     const end = item.durationMs || 10000;
     return maxVideoDurationMs ? Math.min(end, maxVideoDurationMs) : end;
   });
+  const [editLayoutWidth, setEditLayoutWidth] = useState(0);
 
   const [timelineWidth, setTimelineWidth] = useState(MIN_TIMELINE_WIDTH);
   const timelineWidthRef = useRef(MIN_TIMELINE_WIDTH);
@@ -446,7 +447,7 @@ export function EditorScreen({
       imageAspectRatio: targetDim.width / (targetDim.height || 1),
       frameScale: edits.imageOptions.frame ? frameConfig.scale : 1,
       frameOffsetY: edits.imageOptions.frame ? (frameConfig.offsetY || 0) : 0,
-      overlays: edits.overlays.map((o: any) => ({
+      overlays: (edits.overlays || []).map((o: any) => ({
         text: o.text,
         x: (o.x + 4) * renderScale,
         y: (o.y + 4) * renderScale,
@@ -682,7 +683,7 @@ export function EditorScreen({
   const [stickers, setStickers] = useState<Array<{ id: string; emoji: string; x: number; y: number; size: number }>>([]);
   const addSticker = (emoji: string) => {
     pushToHistory();
-    setStickers(prev => [...prev, { id: Date.now().toString(), emoji, x: 80, y: 80, size: 48 }]);
+    setStickers(prev => [...prev, { id: Date.now().toString(), emoji, x: CARD_WIDTH / 2 - 24, y: (SCREEN_WIDTH * 1.25) / 2 - 24, size: 48 }]);
   };
   const removeSticker = (id: string) => {
     pushToHistory();
@@ -716,7 +717,7 @@ export function EditorScreen({
   const addCaption = () => {
     if (!captionInput.trim()) return;
     pushToHistory();
-    setCaptions(prev => [...prev, { id: Date.now().toString(), text: captionInput.trim(), style: captionStyle, x: 60, y: 200 }]);
+    setCaptions(prev => [...prev, { id: Date.now().toString(), text: captionInput.trim(), style: captionStyle, x: CARD_WIDTH / 2 - 40, y: (SCREEN_WIDTH * 1.25) / 2 - 20 }]);
     setCaptionInput('');
   };
   const removeCaption = (id: string) => {
@@ -730,8 +731,8 @@ export function EditorScreen({
     const newItem = {
       id,
       text: '', // start empty so placeholder shows
-      x: 50,
-      y: 50,
+      x: CARD_WIDTH / 2 - 40,
+      y: (SCREEN_WIDTH * 1.25) / 2 - 20,
       color: '#FFFFFF',
       fontSize: 24,
     };
@@ -1953,7 +1954,34 @@ export function EditorScreen({
             zoomScale,
             straightenAngle,
             isMuted,
+            stickers,
+            captions,
           };
+        }
+
+        const isModified = (e: any, it: MediaItem) => {
+          if (!e) return false;
+          if (e.activeFilter !== 'none') return true;
+          if (e.imageOptions.brightness !== 0) return true;
+          if (e.imageOptions.contrast !== 1) return true;
+          if (e.imageOptions.saturation !== 1) return true;
+          if (e.imageOptions.grayscale) return true;
+          if (e.imageOptions.frame) return true;
+          if (e.trimStart !== 0) return true;
+          if (e.trimEnd !== (it.durationMs || 10000)) return true;
+          if (e.overlays && e.overlays.length > 0) return true;
+          if (e.cropRatio !== null) return true;
+          if (e.cropOffset.x !== 0 || e.cropOffset.y !== 0) return true;
+          if (e.zoomScale !== 1) return true;
+          if (e.straightenAngle !== 0) return true;
+          if (e.isMuted) return true;
+          if (e.stickers && e.stickers.length > 0) return true;
+          if (e.captions && e.captions.length > 0) return true;
+          return false;
+        };
+
+        if (edits && !isModified(edits, targetItem)) {
+          edits = null;
         }
 
         if (edits) {
@@ -2163,7 +2191,7 @@ export function EditorScreen({
           {...(isActive && panel === 'transform' && cardItem.type === 'image' ? cropPan.panHandlers : {})}
         >
           {cardItem.type === 'image' ? (
-            <Pressable onPress={() => isActive && setVideoPaused(v => !v)}>
+            <View>
               <Image
                 source={{ uri: isActive && livePreviewUris[cardItem.id] ? livePreviewUris[cardItem.id] : (cardItem.uri?.startsWith('/') ? 'file://' + cardItem.uri : cardItem.uri) }}
                 style={[
@@ -2179,15 +2207,9 @@ export function EditorScreen({
                   }
                 ]}
                 resizeMode={edits.cropRatio ? "cover" : "contain"}
+                resizeMethod="resize"
               />
-              {isActive && videoPaused && (
-                <View style={styles.previewOverlay}>
-                  <View style={styles.playPauseCircle}>
-                    <Ionicons name="play" size={22} color="#fff" />
-                  </View>
-                </View>
-              )}
-            </Pressable>
+            </View>
           ) : (
             <Pressable onPress={() => isActive && setVideoPaused(v => !v)} style={[styles.videoPreview, { transform: [{ scale: currentScale }, { translateX: edits.cropOffset.x }, { translateY: edits.cropOffset.y + currentYOffset }, { scale: edits.zoomScale }, ...cardTransform] }]}>
               <VideoPreview
@@ -2379,7 +2401,7 @@ export function EditorScreen({
                 onLayout={(e) => {
                   const { width } = e.nativeEvent.layout;
                   if (width > 0) {
-                    setUiCanvasWidths(prev => ({ ...prev, [item.id]: width }));
+                    setEditLayoutWidth(width);
                   }
                 }}
                 style={{
@@ -2398,34 +2420,43 @@ export function EditorScreen({
                   const currentYOffset = imageOptions.frame ? (frameConfig.offsetY || 0) * ((dimensions.height || 1000) / (dimensions.width || 1000) * SCREEN_WIDTH) : 0;
 
                   return (
-                    <VideoPreview
-                      uri={item.uri}
-                      paused={!screenIsActive || videoPaused}
-                      muted={!screenIsActive || (selectedMusic ? true : isMuted)}
-                      style={[
-                        styles.editModeVideo,
-                        {
-                          transform: [
-                            { scale: currentScale },
-                            { translateX: cropOffset.x },
-                            { translateY: cropOffset.y + currentYOffset },
-                            { scale: zoomScale }
-                          ]
-                        }
-                      ]}
-                      resizeMode={cropRatio ? "cover" : "contain"}
-                      trimStartMs={trimStart}
-                      trimEndMs={trimEnd}
-                      seekToMs={seekToMs}
-                      onChange={(e) => {
-                        const time = e.nativeEvent.currentTimeMs;
-                        setCurrentTimeMs(time);
-                        if (!isUserScrolling.current && !isDraggingHandle.current) {
-                          const x = (time / duration) * timelineWidth;
-                          timelineScrollRef.current?.scrollTo({ x, animated: false });
-                        }
-                      }}
-                    />
+                    <Pressable onPress={() => setVideoPaused(v => !v)} style={{ width: '100%', height: '100%' }}>
+                      <VideoPreview
+                        uri={item.uri}
+                        paused={!screenIsActive || videoPaused}
+                        muted={!screenIsActive || (selectedMusic ? true : isMuted)}
+                        style={[
+                          styles.editModeVideo,
+                          {
+                            transform: [
+                              { scale: currentScale },
+                              { translateX: cropOffset.x },
+                              { translateY: cropOffset.y + currentYOffset },
+                              { scale: zoomScale }
+                            ]
+                          }
+                        ]}
+                        resizeMode={cropRatio ? "cover" : "contain"}
+                        trimStartMs={trimStart}
+                        trimEndMs={trimEnd}
+                        seekToMs={seekToMs}
+                        onChange={(e) => {
+                          const time = e.nativeEvent.currentTimeMs;
+                          setCurrentTimeMs(time);
+                          if (!isUserScrolling.current && !isDraggingHandle.current) {
+                            const x = (time / duration) * timelineWidth;
+                            timelineScrollRef.current?.scrollTo({ x, animated: false });
+                          }
+                        }}
+                      />
+                      {videoPaused && (
+                        <View style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center' }]} pointerEvents="none">
+                          <View style={styles.playPauseCircle}>
+                            <Ionicons name="play" size={24} color="#fff" />
+                          </View>
+                        </View>
+                      )}
+                    </Pressable>
                   );
                 })()}
 
@@ -2516,20 +2547,25 @@ export function EditorScreen({
 
                 {/* Text Overlays */}
                 {overlays.map((overlay) => {
-                  const responder = getTextResponder(overlay.id);
                   const isSelected = editingTextId === overlay.id;
+                  const originalWidth = uiCanvasWidths[item.id] || CARD_WIDTH;
+                  const visualScale = editLayoutWidth > 0 ? editLayoutWidth / originalWidth : 1;
+                  
                   return (
                     <View
                       key={overlay.id}
                       style={[
                         styles.textOverlayContainer,
-                        { left: overlay.x, top: overlay.y, zIndex: 20 },
+                        { 
+                          left: overlay.x * visualScale, 
+                          top: overlay.y * visualScale, 
+                          zIndex: 20 
+                        },
                         isSelected && styles.selectedTextContainer
                       ]}
-                      {...responder.panHandlers}
                     >
                       <View style={{ padding: 4 }}>
-                        <Text style={[styles.textOverlay, { color: overlay.color, fontSize: overlay.fontSize }]}>
+                        <Text style={[styles.textOverlay, { color: overlay.color, fontSize: overlay.fontSize * visualScale }]}>
                           {overlay.text}
                         </Text>
                       </View>
@@ -2541,12 +2577,18 @@ export function EditorScreen({
 
             {/* Video Player Controls */}
             <View style={styles.playerControlsRow}>
-              <Pressable onPress={() => setVideoPaused(!videoPaused)} style={styles.editPlayPauseBtn}>
-                <Ionicons name={videoPaused ? 'play' : 'pause'} size={20} color="#fff" />
-              </Pressable>
-              <Text style={styles.durationText}>
-                {formatTime(currentTimeMs)} / {formatTime(duration)}
-              </Text>
+              {item.type === 'video' ? (
+                <>
+                  <Pressable onPress={() => setVideoPaused(!videoPaused)} style={styles.editPlayPauseBtn}>
+                    <Ionicons name={videoPaused ? 'play' : 'pause'} size={20} color="#fff" />
+                  </Pressable>
+                  <Text style={styles.durationText}>
+                    {formatTime(currentTimeMs)} / {formatTime(duration)}
+                  </Text>
+                </>
+              ) : (
+                <View style={{ flex: 1 }} />
+              )}
 
               <View style={styles.historyButtons}>
                 <Pressable
@@ -2873,31 +2915,40 @@ export function EditorScreen({
             >
               {/* Fullscreen Video */}
               {!saving && isReady && (
-                <VideoPreview
-                  uri={item.uri}
-                  paused={!screenIsActive || videoPaused || saving}
-                  muted={!screenIsActive || (selectedMusic ? true : isMuted)}
-                  style={[
-                    styles.fullVideo,
-                    {
-                      position: 'relative',
-                      width: '100%',
-                      height: '100%',
-                      transform: [
-                        { scale: zoomScale },
-                        { translateX: cropOffset.x },
-                        { translateY: cropOffset.y }
-                      ]
-                    }
-                  ]}
-                  resizeMode={cropRatio ? "cover" : "contain"}
-                  trimStartMs={trimStart}
-                  trimEndMs={trimEnd}
-                  seekToMs={seekToMs}
-                  onChange={(e) => {
-                    setCurrentTimeMs(e.nativeEvent.currentTimeMs);
-                  }}
-                />
+                <Pressable onPress={() => setVideoPaused(v => !v)} style={{ width: '100%', height: '100%', position: 'relative' }}>
+                  <VideoPreview
+                    uri={item.uri}
+                    paused={!screenIsActive || videoPaused || saving}
+                    muted={!screenIsActive || (selectedMusic ? true : isMuted)}
+                    style={[
+                      styles.fullVideo,
+                      {
+                        position: 'relative',
+                        width: '100%',
+                        height: '100%',
+                        transform: [
+                          { scale: zoomScale },
+                          { translateX: cropOffset.x },
+                          { translateY: cropOffset.y }
+                        ]
+                      }
+                    ]}
+                    resizeMode={cropRatio ? "cover" : "contain"}
+                    trimStartMs={trimStart}
+                    trimEndMs={trimEnd}
+                    seekToMs={seekToMs}
+                    onChange={(e) => {
+                      setCurrentTimeMs(e.nativeEvent.currentTimeMs);
+                    }}
+                  />
+                  {videoPaused && (
+                    <View style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center' }]} pointerEvents="none">
+                      <View style={styles.playPauseCircle}>
+                        <Ionicons name="play" size={24} color="#fff" />
+                      </View>
+                    </View>
+                  )}
+                </Pressable>
               )}
 
               {/* Text Overlays */}
@@ -2998,9 +3049,11 @@ export function EditorScreen({
               <Ionicons name="close" size={22} color="#fff" />
             </Pressable>
             <View style={styles.headerRight}>
-              <Pressable onPress={() => setIsMuted(!isMuted)} style={styles.soundButton}>
-                <Ionicons name={isMuted ? 'volume-mute' : 'volume-high'} size={22} color="#fff" />
-              </Pressable>
+              {item.type === 'video' && (
+                <Pressable onPress={() => setIsMuted(!isMuted)} style={styles.soundButton}>
+                  <Ionicons name={isMuted ? 'volume-mute' : 'volume-high'} size={22} color="#fff" />
+                </Pressable>
+              )}
             </View>
           </View>
 
