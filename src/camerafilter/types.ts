@@ -118,7 +118,7 @@ export const FILTER_CATALOG: FilterOption[] = [
   { id: 'smoothSkin', label: 'Smooth Skin', emoji: '🧴', category: 'beauty' },
   { id: 'slimFace', label: 'Slim Face', emoji: '💆', category: 'beauty' },
   { id: 'eyeEnhance', label: 'Eye Enhance', emoji: '👁️', category: 'beauty' },
-  { id: 'lipstick', label: 'Lipstick', emoji: '💄', category: 'beauty' },
+  // { id: 'lipstick', label: 'Lipstick', emoji: '💄', category: 'beauty' }, // Hidden for now
 ];
 
 export function filtersForCategory(category: FilterCategory): FilterOption[] {

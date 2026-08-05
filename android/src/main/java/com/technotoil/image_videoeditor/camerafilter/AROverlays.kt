@@ -520,9 +520,11 @@ object AROverlays {
     val rollAngle = face.rollAngle
 
     val eyeDistance = hypot((re.x - le.x).toDouble(), (re.y - le.y).toDouble()).toFloat()
-    val top = topOfHeadPoint(face)
+    val centerY = (le.y + re.y) / 2
     val centerX = (le.x + re.x) / 2
-    val bandY = top?.let { it.y + eyeDistance * 0.15f } ?: (min(le.y, re.y) - eyeDistance * 0.9f)
+    // Move the flower crown up to rest on the hair/top of head rather than the forehead/eyebrows
+    // MLKit face contour top is at eyebrow level, so we must anchor from the eyes instead.
+    val bandY = centerY - eyeDistance * 0.95f
     val anchor = PointF(centerX, bandY)
     val flowerSize = eyeDistance * 0.32f
 
@@ -1188,10 +1190,11 @@ object AROverlays {
     val baseOffsetY = pitchRad * eyeDistance * 0.15f
 
     // Define brim height relative to face center in local coordinates
+    // Increased the negative offset to push hats significantly higher above the head
     val localBrimY = centerY - eyeDistance * when (hatStyle) {
-      HatStyleType.WIZARD -> 0.95f
-      HatStyleType.COWBOY -> 0.82f
-      HatStyleType.SANTA -> 0.80f
+      HatStyleType.WIZARD -> 1.55f
+      HatStyleType.COWBOY -> 1.45f
+      HatStyleType.SANTA -> 1.35f
     }
 
     val brimX = centerX + baseOffsetX

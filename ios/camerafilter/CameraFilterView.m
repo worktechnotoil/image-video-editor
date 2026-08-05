@@ -1134,6 +1134,8 @@
         } else {
           lipColor = [[UIColor redColor] colorWithAlphaComponent:0.5];
         }
+        CGContextSaveGState(context);
+        CGContextSetBlendMode(context, kCGBlendModeMultiply);
         CGContextSetFillColorWithColor(context, lipColor.CGColor);
         CGContextBeginPath(context);
 
@@ -1164,6 +1166,7 @@
         }
         CGContextClosePath(context);
         CGContextEOFillPath(context);
+        CGContextRestoreGState(context);
       }
 
     } else if ([_filter hasPrefix:@"glasses_"] ||
@@ -1499,25 +1502,25 @@
       if ([_filter isEqualToString:@"hat_wizard"]) {
         CGContextSetFillColorWithColor(context, [UIColor purpleColor].CGColor);
         CGContextBeginPath(context);
-        CGContextMoveToPoint(context, -eyeDist * 1.5, eyeDist * 1.0);
-        CGContextAddLineToPoint(context, eyeDist * 1.5, eyeDist * 1.0);
-        CGContextAddLineToPoint(context, 0, eyeDist * 3.5);
+        CGContextMoveToPoint(context, -eyeDist * 1.5, eyeDist * 1.55);
+        CGContextAddLineToPoint(context, eyeDist * 1.5, eyeDist * 1.55);
+        CGContextAddLineToPoint(context, 0, eyeDist * 4.05);
         CGContextClosePath(context);
         CGContextFillPath(context);
       } else if ([_filter isEqualToString:@"hat_santa"]) {
         CGContextSetFillColorWithColor(context, [UIColor redColor].CGColor);
         CGContextBeginPath(context);
-        CGContextMoveToPoint(context, -eyeDist * 1.2, eyeDist * 1.0);
-        CGContextAddLineToPoint(context, eyeDist * 1.2, eyeDist * 1.0);
-        CGContextAddLineToPoint(context, eyeDist * 0.8, eyeDist * 2.5);
-        CGContextAddLineToPoint(context, eyeDist * 1.8, eyeDist * 2.0);
+        CGContextMoveToPoint(context, -eyeDist * 1.2, eyeDist * 1.35);
+        CGContextAddLineToPoint(context, eyeDist * 1.2, eyeDist * 1.35);
+        CGContextAddLineToPoint(context, eyeDist * 0.8, eyeDist * 2.85);
+        CGContextAddLineToPoint(context, eyeDist * 1.8, eyeDist * 2.35);
         CGContextClosePath(context);
         CGContextFillPath(context);
         CGContextSetFillColorWithColor(context, [UIColor whiteColor].CGColor);
         CGContextFillEllipseInRect(context,
-                                   CGRectMake(eyeDist * 1.6, eyeDist * 1.8,
+                                   CGRectMake(eyeDist * 1.6, eyeDist * 2.15,
                                               eyeDist * 0.6, eyeDist * 0.6));
-        CGContextFillRect(context, CGRectMake(-eyeDist * 1.3, eyeDist * 0.9,
+        CGContextFillRect(context, CGRectMake(-eyeDist * 1.3, eyeDist * 1.25,
                                               eyeDist * 2.6, eyeDist * 0.4));
       } else if ([_filter isEqualToString:@"hat_cowboy"] ||
                  [_filter isEqualToString:@"snap_sunset_cowboy"]) {
@@ -1528,7 +1531,7 @@
         // X) = below brimY in Y-down → iOS (brimY - X)
         //           Android (brimY - X) = above brimY in Y-down → iOS (brimY +
         //           X)
-        CGFloat brimY = eyeDist * 0.82; // reference level (where brim sits)
+        CGFloat brimY = eyeDist * 1.45; // reference level (where brim sits)
         CGFloat brimX = 0;
 
         CGFloat crownW = eyeDist * 1.8;
@@ -1714,8 +1717,8 @@
                             alpha:1.0];
 
         // bandY is above eyes. In Android Y-down it was min(eye.y) -
-        // 0.9*eyeDist In iOS Y-up, above eyes is positive Y
-        CGFloat bandY = eyeDist * 0.9;
+        // 1.1*eyeDist In iOS Y-up, above eyes is positive Y
+        CGFloat bandY = eyeDist * 1.4;
         CGFloat flowerSize = eyeDist * 0.32;
         CGFloat centerX = 0; // already centered via faceCenter translation
 
@@ -3923,7 +3926,13 @@
                                                        options:@{}];
       NSError *error;
       [handler performRequests:@[ self.faceDetectionRequest ] error:&error];
-      self.currentFaces = self.faceDetectionRequest.results;
+      NSMutableArray *validFaces = [NSMutableArray array];
+      for (VNFaceObservation *face in self.faceDetectionRequest.results) {
+        if (face.landmarks.leftEye && face.landmarks.rightEye && face.landmarks.faceContour) {
+          [validFaces addObject:face];
+        }
+      }
+      self.currentFaces = validFaces;
     } else {
       self.currentFaces = nil;
     }

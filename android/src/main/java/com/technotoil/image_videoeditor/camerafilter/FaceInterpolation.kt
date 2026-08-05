@@ -153,56 +153,17 @@ fun interpolateFaces(
   elapsedMs: Float,
   intervalMs: Float
 ): List<DetectedFace> {
-  if (prev.isEmpty() || curr.isEmpty()) return curr
-
-  val matched = matchPrevious(prev, curr)
-  val tClamped = t.coerceIn(0f, 2.0f) // Allow slight extrapolation
+  // MLKit's enableTracking() already applies internal smoothing.
+  // Time-based manual interpolation over 't' fights MLKit and causes severe flickering/jitter.
+  // We just return the current raw detection and inject the smoothed eye distance for scaling.
+  if (curr.isEmpty()) return curr
 
   return curr.mapIndexed { idx, c ->
-    val p = matched[idx] ?: return@mapIndexed c
-    val lerpedFaceResult = lerpFace(p, c, tClamped)
-
     val vel = if (idx < vels.size) vels[idx] else null
-    if (vel == null) return@mapIndexed lerpedFaceResult
-
-    // Dynamic predictive blend based on speed to prevent lag
-    val speed = hypot(vel.vx.toDouble(), vel.vy.toDouble()).toFloat()
-    val maxSpeed = c.boundingBox.width() * 0.05f
-    val predictionBlend = (speed / maxSpeed).coerceIn(0f, 1f) * (elapsedMs / intervalMs).coerceIn(0f, 1f)
-
-    if (predictionBlend < 0.01f) {
-      lerpedFaceResult.smoothedEyeDistance = vel.smoothedEyeDistance
-      return@mapIndexed lerpedFaceResult
+    if (vel != null && vel.smoothedEyeDistance > 0f) {
+      c.smoothedEyeDistance = vel.smoothedEyeDistance
     }
-
-    val finalFace = DetectedFace(
-      boundingBox = RectF(
-        lerp(lerpedFaceResult.boundingBox.left, c.boundingBox.left + vel.vx * elapsedMs, predictionBlend),
-        lerp(lerpedFaceResult.boundingBox.top, c.boundingBox.top + vel.vy * elapsedMs, predictionBlend),
-        lerp(lerpedFaceResult.boundingBox.right, c.boundingBox.right + vel.vx * elapsedMs, predictionBlend),
-        lerp(lerpedFaceResult.boundingBox.bottom, c.boundingBox.bottom + vel.vy * elapsedMs, predictionBlend),
-      ),
-      rollAngle = lerp(lerpedFaceResult.rollAngle, c.rollAngle + vel.vRoll * elapsedMs, predictionBlend),
-      yawAngle = lerp(lerpedFaceResult.yawAngle, c.yawAngle + vel.vYaw * elapsedMs, predictionBlend),
-      pitchAngle = lerp(lerpedFaceResult.pitchAngle, c.pitchAngle + vel.vPitch * elapsedMs, predictionBlend),
-      leftEye = predictPoint(lerpedFaceResult.leftEye, c.leftEye, vel.vx, vel.vy, elapsedMs, predictionBlend),
-      rightEye = predictPoint(lerpedFaceResult.rightEye, c.rightEye, vel.vx, vel.vy, elapsedMs, predictionBlend),
-      noseBase = predictPoint(lerpedFaceResult.noseBase, c.noseBase, vel.vx, vel.vy, elapsedMs, predictionBlend),
-      leftEar = predictPoint(lerpedFaceResult.leftEar, c.leftEar, vel.vx, vel.vy, elapsedMs, predictionBlend),
-      rightEar = predictPoint(lerpedFaceResult.rightEar, c.rightEar, vel.vx, vel.vy, elapsedMs, predictionBlend),
-      leftCheek = predictPoint(lerpedFaceResult.leftCheek, c.leftCheek, vel.vx, vel.vy, elapsedMs, predictionBlend),
-      rightCheek = predictPoint(lerpedFaceResult.rightCheek, c.rightCheek, vel.vx, vel.vy, elapsedMs, predictionBlend),
-      faceContour = predictPointList(lerpedFaceResult.faceContour, c.faceContour, vel.vx, vel.vy, elapsedMs, predictionBlend),
-      upperLip = predictPointList(lerpedFaceResult.upperLip, c.upperLip, vel.vx, vel.vy, elapsedMs, predictionBlend),
-      lowerLip = predictPointList(lerpedFaceResult.lowerLip, c.lowerLip, vel.vx, vel.vy, elapsedMs, predictionBlend),
-      upperLipBottom = predictPointList(lerpedFaceResult.upperLipBottom, c.upperLipBottom, vel.vx, vel.vy, elapsedMs, predictionBlend),
-      lowerLipTop = predictPointList(lerpedFaceResult.lowerLipTop, c.lowerLipTop, vel.vx, vel.vy, elapsedMs, predictionBlend),
-      smilingProbability = lerpFloatOrNull(lerpedFaceResult.smilingProbability, c.smilingProbability, predictionBlend),
-      leftEyeOpenProbability = lerpFloatOrNull(lerpedFaceResult.leftEyeOpenProbability, c.leftEyeOpenProbability, predictionBlend),
-      rightEyeOpenProbability = lerpFloatOrNull(lerpedFaceResult.rightEyeOpenProbability, c.rightEyeOpenProbability, predictionBlend),
-    )
-    finalFace.smoothedEyeDistance = vel.smoothedEyeDistance
-    finalFace
+    c
   }
 }
 

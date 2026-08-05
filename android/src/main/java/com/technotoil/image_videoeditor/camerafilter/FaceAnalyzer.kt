@@ -185,6 +185,7 @@ class FaceAnalyzer(
       detector.process(inputImage)
         .addOnSuccessListener { faces ->
           latestFaces = faces.map { toDetectedFace(it, upscale) }
+            .filter { it.leftEye != null && it.rightEye != null && !it.faceContour.isNullOrEmpty() }
           latestFacesTimestamp = detectionTimestamp
         }
         .addOnCompleteListener {

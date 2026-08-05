@@ -229,6 +229,9 @@ export function PickScreen({
   };
 
   const handleLongPress = async () => {
+    if (isRecordingRef.current || isStartRecordingProcessing.current) {
+      return;
+    }
     try {
       isRecordingRef.current = true;
       setIsRecording(true);
@@ -1047,13 +1050,17 @@ export function PickScreen({
             <View style={[styles.unifiedBottomBar, { paddingBottom: Math.max(insets.bottom, 16) }]}>
               <View style={styles.unifiedBottomRow}>
                 {/* Gallery (Left) */}
-                <View style={styles.cameraGalleryPreview} pointerEvents="auto">
+                <Pressable
+                  style={styles.cameraGalleryPreview}
+                  pointerEvents="auto"
+                  onPress={() => setShowCustomCamera(false)}
+                >
                   {library.length > 1 && library[1].thumbnailUri ? (
                     <Image source={{ uri: library[1].thumbnailUri }} style={styles.cameraGalleryThumb} />
                   ) : (
                     <View style={styles.cameraGalleryThumbPlaceholder} />
                   )}
-                </View>
+                </Pressable>
 
                 {/* Modes (Center) */}
                 <View style={styles.cameraModeBar}>

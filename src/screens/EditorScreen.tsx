@@ -24,6 +24,7 @@ import { VideoPreview } from '../native/VideoPreview';
 import Video from 'react-native-video';
 import { Icon as Ionicons } from '../components/Icon';
 import type { ImageEditOptions, MediaItem, MusicTrack } from '../types';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -202,6 +203,7 @@ export function EditorScreen({
   maxVideoDurationMs?: number;
   isActive?: boolean;
 }) {
+  const insets = useSafeAreaInsets();
   const [activeIndex, setActiveIndex] = useState(initialIndex);
   const currentItem = items[activeIndex] || items[0];
   const item = currentItem; // Aliasing to 'item' for ease of compatibility
@@ -2379,7 +2381,7 @@ export function EditorScreen({
           /* Render Edit Mode UI (Screenshot 2) */
           <View style={styles.editModeContainer}>
             {/* Top Header */}
-            <View style={styles.editModeHeader}>
+            <View style={[styles.editModeHeader, { paddingTop: insets.top, height: 56 + insets.top }]}>
               <Pressable onPress={() => setIsEditingVideo(false)} style={styles.editModeBackBtn}>
                 <Ionicons name="chevron-down" size={22} color="#fff" />
               </Pressable>
@@ -2894,12 +2896,12 @@ export function EditorScreen({
           /* Render Preview Mode UI (Screenshot 1) */
           <View style={[styles.fullPreviewContainer, { justifyContent: 'center', alignItems: 'center' }]}>
             {/* Floating Close Button */}
-            <Pressable onPress={onBack} style={styles.fullscreenCloseBtn}>
+            <Pressable onPress={onBack} style={[styles.fullscreenCloseBtn, { top: Math.max(insets.top + 8, 16) }]}>
               <Ionicons name="close" size={24} color="#fff" />
             </Pressable>
 
             {/* Floating Sound Toggle */}
-            <Pressable onPress={() => setIsMuted(!isMuted)} style={styles.fullscreenSoundBtn}>
+            <Pressable onPress={() => setIsMuted(!isMuted)} style={[styles.fullscreenSoundBtn, { top: Math.max(insets.top + 8, 16) }]}>
               <Ionicons name={isMuted ? 'volume-mute' : 'volume-high'} size={22} color="#fff" />
             </Pressable>
             <View
@@ -3044,7 +3046,7 @@ export function EditorScreen({
       ) : (
         <>
           {/* Modern Header */}
-          <View style={styles.header}>
+          <View style={[styles.header, { paddingTop: insets.top, height: 56 + insets.top }]}>
             <Pressable onPress={onBack} style={styles.backButton}>
               <Ionicons name="close" size={22} color="#fff" />
             </Pressable>

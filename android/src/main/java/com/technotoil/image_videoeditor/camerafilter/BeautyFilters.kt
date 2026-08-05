@@ -51,16 +51,23 @@ object BeautyFilters {
     if (upperPath == null && lowerPath == null) return
 
     val color = when (colorType) {
-      "red" -> android.graphics.Color.argb(105, 220, 20, 60)
-      "pink" -> android.graphics.Color.argb(95, 255, 60, 150)
-      "coral" -> android.graphics.Color.argb(95, 255, 115, 65)
-      "plum" -> android.graphics.Color.argb(110, 128, 0, 128)
-      else -> android.graphics.Color.argb(105, 220, 20, 60)
+      "red" -> android.graphics.Color.argb(160, 200, 20, 50)
+      "pink" -> android.graphics.Color.argb(150, 240, 60, 130)
+      "coral" -> android.graphics.Color.argb(150, 240, 100, 60)
+      "plum" -> android.graphics.Color.argb(160, 110, 0, 100)
+      else -> android.graphics.Color.argb(160, 200, 20, 50)
     }
 
     val lipstickPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
       this.color = color
       this.style = Paint.Style.FILL
+    }
+
+    val edgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      this.color = color
+      this.style = Paint.Style.STROKE
+      this.strokeJoin = Paint.Join.ROUND
+      this.strokeCap = Paint.Cap.ROUND
     }
 
     canvas.save()
@@ -70,6 +77,20 @@ object BeautyFilters {
     if (lowerPath != null) {
       canvas.drawPath(lowerPath, lipstickPaint)
     }
+
+    // Hardware-accelerated fake blur using layered strokes
+    val originalAlpha = android.graphics.Color.alpha(color)
+    val faceW = face.boundingBox.width()
+    val stepSize = maxOf(1.5f, faceW * 0.012f)
+    
+    val steps = 4
+    for (i in 1..steps) {
+      edgePaint.strokeWidth = i * stepSize
+      edgePaint.alpha = originalAlpha / (steps + 1)
+      if (upperPath != null) canvas.drawPath(upperPath, edgePaint)
+      if (lowerPath != null) canvas.drawPath(lowerPath, edgePaint)
+    }
+
     canvas.restore()
   }
 }
