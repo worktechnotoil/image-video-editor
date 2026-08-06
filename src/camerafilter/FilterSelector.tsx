@@ -10,7 +10,7 @@ const CircularProgressRing = ({ progressAnim, size = 84, strokeWidth = 4, color 
 
   const rotateLeft = progressAnim.interpolate({
     inputRange: [0, 0.5, 1],
-    outputRange: ['-135deg', '-135deg', '45deg']
+    outputRange: ['45deg', '45deg', '225deg']
   });
 
   return (
@@ -260,8 +260,10 @@ export function FilterSelector({ onSelect, onCapturePress, onCaptureLongPress, o
         <View style={styles.staticRingContainer} pointerEvents="none">
           <View style={[styles.staticRing, isRecording && styles.staticRingRecording]} />
           {isRecording && recordingProgressAnim && (
-            <View style={{ position: 'absolute', top: -4, alignSelf: 'center', width: 84, height: 84, marginTop: -5 }}>
-              <CircularProgressRing progressAnim={recordingProgressAnim} size={84} />
+            <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, alignItems: 'center', justifyContent: 'flex-start', marginTop: -9 }}>
+              <View style={{ width: 84, height: 84 }}>
+                <CircularProgressRing progressAnim={recordingProgressAnim} size={84} />
+              </View>
             </View>
           )}
         </View>

@@ -299,23 +299,27 @@ RCT_REMAP_METHOD(exportAsset,
       PHImageRequestOptions *opts = [[PHImageRequestOptions alloc] init];
       opts.synchronous = YES;
       opts.networkAccessAllowed = YES;
+      opts.deliveryMode = PHImageRequestOptionsDeliveryModeHighQualityFormat;
 
       __block NSString *outUri = nil;
-    [[PHImageManager defaultManager] requestImageDataAndOrientationForAsset:asset options:opts resultHandler:^(NSData * _Nullable imageData, NSString * _Nullable dataUTI, CGImagePropertyOrientation orientation, NSDictionary * _Nullable info) {
-      if (imageData) {
-        NSString *fileName = [NSString stringWithFormat:@"export_%@.jpg", [[NSUUID UUID] UUIDString]];
-        NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:fileName];
-        [imageData writeToFile:path atomically:YES];
-        outUri = [NSURL fileURLWithPath:path].absoluteString;
-      }
-    }];
+      [[PHImageManager defaultManager] requestImageForAsset:asset targetSize:PHImageManagerMaximumSize contentMode:PHImageContentModeDefault options:opts resultHandler:^(UIImage * _Nullable result, NSDictionary * _Nullable info) {
+        if (result) {
+          NSData *data = UIImageJPEGRepresentation(result, 1.0);
+          if (data) {
+            NSString *fileName = [NSString stringWithFormat:@"export_%@.jpg", [[NSUUID UUID] UUIDString]];
+            NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:fileName];
+            [data writeToFile:path atomically:YES];
+            outUri = [NSURL fileURLWithPath:path].absoluteString;
+          }
+        }
+      }];
 
-    if (outUri) {
-      resolve(outUri);
-    } else {
-      reject(@"export_failed", @"Could not export image", nil);
-    }
-  } else if (asset.mediaType == PHAssetMediaTypeVideo) {
+      if (outUri) {
+        resolve(outUri);
+      } else {
+        reject(@"export_failed", @"Could not export image", nil);
+      }
+    } else if (asset.mediaType == PHAssetMediaTypeVideo) {
     NSArray<PHAssetResource *> *resources = [PHAssetResource assetResourcesForAsset:asset];
     PHAssetResource *videoResource = nil;
     for (PHAssetResource *res in resources) {

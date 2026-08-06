@@ -184,6 +184,142 @@ interface EditorStateSnapshot {
   captions: Array<{ id: string; text: string; style: string; x: number; y: number }>;
 }
 
+const DraggableTextOverlay = React.memo(({
+  overlay,
+  isSelected,
+  onPress,
+  onRemove,
+  onUpdatePosition,
+  onIsOverTrashChange,
+  onDragStart,
+  onDragEnd,
+}: {
+  overlay: any;
+  isSelected: boolean;
+  onPress: (id: string) => void;
+  onRemove: (id: string) => void;
+  onUpdatePosition: (id: string, x: number, y: number) => void;
+  onIsOverTrashChange: (isOver: boolean) => void;
+  onDragStart: (id: string) => void;
+  onDragEnd: () => void;
+}) => {
+  const pan = useRef(new Animated.ValueXY({ x: overlay.x, y: overlay.y })).current;
+  const pressStartTime = useRef(0);
+  const hasMoved = useRef(false);
+  const longPressTimeout = useRef<any>(null);
+  const lastIsOverTrash = useRef(false);
+
+  useEffect(() => {
+    pan.setValue({ x: overlay.x, y: overlay.y });
+  }, [overlay.x, overlay.y, pan]);
+
+  const responder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponderCapture: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: () => {
+        onDragStart(overlay.id);
+        pressStartTime.current = Date.now();
+        hasMoved.current = false;
+        pan.setOffset({
+          x: (pan.x as any)._value,
+          y: (pan.y as any)._value
+        });
+        pan.setValue({ x: 0, y: 0 });
+        lastIsOverTrash.current = false;
+
+        if (longPressTimeout.current) clearTimeout(longPressTimeout.current);
+        longPressTimeout.current = setTimeout(() => {
+          if (!hasMoved.current) {
+            onRemove(overlay.id);
+          }
+        }, 600);
+      },
+      onPanResponderMove: (e, gesture) => {
+        if (Math.abs(gesture.dx) > 4 || Math.abs(gesture.dy) > 4) {
+          hasMoved.current = true;
+          if (longPressTimeout.current) {
+            clearTimeout(longPressTimeout.current);
+            longPressTimeout.current = null;
+          }
+        }
+        
+        pan.setValue({ x: gesture.dx, y: gesture.dy });
+
+        const isNearTrash = gesture.moveY > SCREEN_HEIGHT - 140 && Math.abs(gesture.moveX - (SCREEN_WIDTH / 2)) < 90;
+        if (isNearTrash !== lastIsOverTrash.current) {
+          lastIsOverTrash.current = isNearTrash;
+          onIsOverTrashChange(isNearTrash);
+        }
+      },
+      onPanResponderRelease: (e, gesture) => {
+        if (longPressTimeout.current) {
+          clearTimeout(longPressTimeout.current);
+          longPressTimeout.current = null;
+        }
+        pan.flattenOffset();
+        onDragEnd();
+        
+        const releasedOverTrash = gesture.moveY > SCREEN_HEIGHT - 140 && Math.abs(gesture.moveX - (SCREEN_WIDTH / 2)) < 90;
+        if (lastIsOverTrash.current) {
+          lastIsOverTrash.current = false;
+          onIsOverTrashChange(false);
+        }
+
+        if (releasedOverTrash) {
+          setTimeout(() => onRemove(overlay.id), 50);
+          return;
+        }
+
+        const pressDuration = Date.now() - pressStartTime.current;
+        if (!hasMoved.current && pressDuration < 250) {
+          onPress(overlay.id);
+        } else {
+          onUpdatePosition(overlay.id, (pan.x as any)._value, (pan.y as any)._value);
+        }
+      },
+      onPanResponderTerminate: () => {
+        if (longPressTimeout.current) {
+          clearTimeout(longPressTimeout.current);
+          longPressTimeout.current = null;
+        }
+        pan.flattenOffset();
+        onDragEnd();
+        if (lastIsOverTrash.current) {
+          lastIsOverTrash.current = false;
+          onIsOverTrashChange(false);
+        }
+      }
+    })
+  ).current;
+
+  return (
+    <Animated.View
+      style={[
+        styles.textOverlayContainer,
+        { 
+          left: 0, 
+          top: 0, 
+          zIndex: 20, 
+          position: 'absolute',
+          transform: pan.getTranslateTransform()
+        },
+        isSelected && styles.selectedTextContainer
+      ]}
+      {...responder.panHandlers}
+    >
+      <View style={{ padding: 4 }}>
+        <Text style={[styles.textOverlay, { color: overlay.color, fontSize: overlay.fontSize }]}>
+          {overlay.text}
+        </Text>
+      </View>
+    </Animated.View>
+  );
+});
+
 export function EditorScreen({
   items,
   initialIndex = 0,
@@ -246,6 +382,9 @@ export function EditorScreen({
           const extraDur = dur - 120000;
           targetWidth = baseWidth + Math.log2(1 + extraDur / 60000) * MIN_TIMELINE_WIDTH;
         }
+      } else if (dur <= 3000) {
+        // Slow down the timeline scrolling for very short videos by shrinking the width
+        targetWidth = Math.max(120, (dur / 3000) * (MIN_TIMELINE_WIDTH / 1.5));
       }
       setTimelineWidth(targetWidth);
       timelineWidthRef.current = targetWidth;
@@ -1026,116 +1165,7 @@ export function EditorScreen({
   const cornerBL = useRef(createCornerPan('BL')).current;
   const cornerBR = useRef(createCornerPan('BR')).current;
 
-  const createTextPan = (id: string) => {
-    let startX = 0;
-    let startY = 0;
-    let pressStartTime = 0;
-    let hasMoved = false;
-    let longPressTimeout: any = null;
 
-    return PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: () => {
-        pressStartTime = Date.now();
-        hasMoved = false;
-        setActiveDraggingId(id);
-        setIsOverTrash(false);
-
-        setOverlays(prev => {
-          const item = prev.find(o => o.id === id);
-          if (item) {
-            startX = item.x;
-            startY = item.y;
-          }
-          return prev;
-        });
-
-        // Setup long press timer (600ms)
-        if (longPressTimeout) clearTimeout(longPressTimeout);
-        longPressTimeout = setTimeout(() => {
-          if (!hasMoved) {
-            removeTextOverlay(id);
-          }
-        }, 600);
-      },
-      onPanResponderMove: (_, gesture) => {
-        if (Math.abs(gesture.dx) > 4 || Math.abs(gesture.dy) > 4) {
-          hasMoved = true;
-          if (longPressTimeout) {
-            clearTimeout(longPressTimeout);
-            longPressTimeout = null;
-          }
-        }
-
-        const newX = startX + gesture.dx;
-        const newY = startY + gesture.dy;
-
-        // Trash zone: bottom 140px of screen, center horizontal
-        const isNearTrash = gesture.moveY > SCREEN_HEIGHT - 140 && Math.abs(gesture.moveX - (SCREEN_WIDTH / 2)) < 90;
-        setIsOverTrash(isNearTrash);
-
-        setOverlays(prev => prev.map(o => o.id === id ? {
-          ...o,
-          x: newX,
-          y: newY
-        } : o));
-      },
-      onPanResponderRelease: (_, gesture) => {
-        if (longPressTimeout) {
-          clearTimeout(longPressTimeout);
-          longPressTimeout = null;
-        }
-
-        // Check if released over trash zone using final touch screen coordinates
-        const releasedOverTrash = gesture.moveY > SCREEN_HEIGHT - 140 && Math.abs(gesture.moveX - (SCREEN_WIDTH / 2)) < 90;
-
-        // Reset dragging states
-        setActiveDraggingId(null);
-        setIsOverTrash(false);
-
-        if (releasedOverTrash) {
-          setTimeout(() => {
-            removeTextOverlay(id);
-          }, 50);
-          return;
-        }
-
-        const pressDuration = Date.now() - pressStartTime;
-        if (!hasMoved && pressDuration < 250) {
-          pushToHistory();
-          setOverlays(prev => {
-            const found = prev.find(o => o.id === id);
-            if (found) {
-              originalOverlayBackup.current = { ...found };
-              isNewOverlay.current = false;
-              setEditingTextId(id);
-              setNewText(found.text);
-              setPanel('text');
-            }
-            return prev;
-          });
-        }
-      },
-      onPanResponderTerminate: () => {
-        if (longPressTimeout) {
-          clearTimeout(longPressTimeout);
-          longPressTimeout = null;
-        }
-        setActiveDraggingId(null);
-        setIsOverTrash(false);
-      }
-    });
-  };
-
-  const textResponders = useRef<Record<string, any>>({});
-
-  const getTextResponder = (id: string) => {
-    if (!textResponders.current[id]) {
-      textResponders.current[id] = createTextPan(id);
-    }
-    return textResponders.current[id];
-  };
 
   const containerHeight = showMusicModal ? (SCREEN_WIDTH * 0.72) : (SCREEN_WIDTH * 1.25);
 
@@ -2195,7 +2225,7 @@ export function EditorScreen({
           {cardItem.type === 'image' ? (
             <View>
               <Image
-                source={{ uri: isActive && livePreviewUris[cardItem.id] ? livePreviewUris[cardItem.id] : (cardItem.uri?.startsWith('/') ? 'file://' + cardItem.uri : cardItem.uri) }}
+                source={{ uri: isActive && livePreviewUris[cardItem.id] ? livePreviewUris[cardItem.id] : (cardItem.uri?.startsWith('ph://') ? cardItem.thumbnailUri : (cardItem.uri?.startsWith('/') ? 'file://' + cardItem.uri : cardItem.uri)) }}
                 style={[
                   styles.preview,
                   {
@@ -2276,27 +2306,31 @@ export function EditorScreen({
           )}
 
           {/* Text Overlays */}
-          {isActive && overlays.map((overlay) => {
-            const responder = getTextResponder(overlay.id);
-            const isSelected = editingTextId === overlay.id;
-            return (
-              <View
-                key={overlay.id}
-                style={[
-                  styles.textOverlayContainer,
-                  { left: overlay.x, top: overlay.y, zIndex: 20 },
-                  isSelected && styles.selectedTextContainer
-                ]}
-                {...responder.panHandlers}
-              >
-                <View style={{ padding: 4 }}>
-                  <Text style={[styles.textOverlay, { color: overlay.color, fontSize: overlay.fontSize }]}>
-                    {overlay.text}
-                  </Text>
-                </View>
-              </View>
-            );
-          })}
+          {isActive && overlays.map((overlay) => (
+            <DraggableTextOverlay
+              key={overlay.id}
+              overlay={overlay}
+              isSelected={editingTextId === overlay.id}
+              onPress={(id) => {
+                pushToHistory();
+                const found = overlays.find(o => o.id === id);
+                if (found) {
+                  originalOverlayBackup.current = { ...found };
+                  isNewOverlay.current = false;
+                  setEditingTextId(id);
+                  setNewText(found.text);
+                  setPanel('text');
+                }
+              }}
+              onRemove={removeTextOverlay}
+              onUpdatePosition={(id, x, y) => {
+                setOverlays(prev => prev.map(o => o.id === id ? { ...o, x, y } : o));
+              }}
+              onIsOverTrashChange={setIsOverTrash}
+              onDragStart={setActiveDraggingId}
+              onDragEnd={() => setActiveDraggingId(null)}
+            />
+          ))}
 
           {!isActive && edits.overlays && edits.overlays.map((overlay: any) => (
             <View
@@ -2954,27 +2988,31 @@ export function EditorScreen({
               )}
 
               {/* Text Overlays */}
-              {overlays.map((overlay) => {
-                const responder = getTextResponder(overlay.id);
-                const isSelected = editingTextId === overlay.id;
-                return (
-                  <View
-                    key={overlay.id}
-                    style={[
-                      styles.textOverlayContainer,
-                      { left: overlay.x, top: overlay.y, zIndex: 20 },
-                      isSelected && styles.selectedTextContainer
-                    ]}
-                    {...responder.panHandlers}
-                  >
-                    <View style={{ padding: 4 }}>
-                      <Text style={[styles.textOverlay, { color: overlay.color, fontSize: overlay.fontSize }]}>
-                        {overlay.text}
-                      </Text>
-                    </View>
-                  </View>
-                );
-              })}
+              {overlays.map((overlay) => (
+                <DraggableTextOverlay
+                  key={overlay.id}
+                  overlay={overlay}
+                  isSelected={editingTextId === overlay.id}
+                  onPress={(id) => {
+                    pushToHistory();
+                    const found = overlays.find(o => o.id === id);
+                    if (found) {
+                      originalOverlayBackup.current = { ...found };
+                      isNewOverlay.current = false;
+                      setEditingTextId(id);
+                      setNewText(found.text);
+                      setPanel('text');
+                    }
+                  }}
+                  onRemove={removeTextOverlay}
+                  onUpdatePosition={(id, x, y) => {
+                    setOverlays(prev => prev.map(o => o.id === id ? { ...o, x, y } : o));
+                  }}
+                  onIsOverTrashChange={setIsOverTrash}
+                  onDragStart={setActiveDraggingId}
+                  onDragEnd={() => setActiveDraggingId(null)}
+                />
+              ))}
             </View>
 
             {/* Fullscreen Bottom Overlay Container */}
@@ -4069,6 +4107,8 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     fontSize: 13,
     fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+    minWidth: 80,
   },
   historyButtons: {
     flexDirection: 'row',

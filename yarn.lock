@@ -2586,7 +2586,7 @@ __metadata:
     "@react-native/metro-config": "npm:0.84.0"
     "@react-native/new-app-screen": "npm:0.84.0"
     "@react-native/typescript-config": "npm:0.84.0"
-    "@technotoil/image-video-editor": "file:../technotoil-image-video-editor-0.1.15.tgz"
+    "@technotoil/image-video-editor": "file:../technotoil-image-video-editor-0.1.16.tgz"
     "@types/jest": "npm:^29.5.13"
     "@types/react": "npm:^19.2.0"
     "@types/react-native-vector-icons": "npm:^6.4.18"
@@ -2605,9 +2605,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@technotoil/image-video-editor@file:../technotoil-image-video-editor-0.1.15.tgz::locator=%40technotoil%2Fimage-video-editor-example%40workspace%3Aexample":
-  version: 0.1.15
-  resolution: "@technotoil/image-video-editor@file:../technotoil-image-video-editor-0.1.15.tgz#../technotoil-image-video-editor-0.1.15.tgz::hash=79e46a&locator=%40technotoil%2Fimage-video-editor-example%40workspace%3Aexample"
+"@technotoil/image-video-editor@file:../technotoil-image-video-editor-0.1.16.tgz::locator=%40technotoil%2Fimage-video-editor-example%40workspace%3Aexample":
+  version: 0.1.16
+  resolution: "@technotoil/image-video-editor@file:../technotoil-image-video-editor-0.1.16.tgz#../technotoil-image-video-editor-0.1.16.tgz::hash=f70b71&locator=%40technotoil%2Fimage-video-editor-example%40workspace%3Aexample"
   dependencies:
     react-native-fs: "npm:^2.20.0"
   peerDependencies:
@@ -2616,7 +2616,7 @@ __metadata:
     react-native-image-crop-picker: ^0.51.1
     react-native-safe-area-context: ^5.5.2
     react-native-video: ">=6.0.0"
-  checksum: 10c0/632f856ff2b83bfee747f32b44ed01e02daba1c099145ed8ae5bdfab4123f3e277e422c9f3bb2303c47fd0855a5a0a310bf3fdf7ea756e9b7ab3c08030f4bf14
+  checksum: 10c0/83aec93a6db89b602405f9067f6341e23ba9773210f30258b4b6918a2a49e205f0ef89fb27142bfb09f214e41653b87cab44cdaf463cc5d25b552eea565791cd
   languageName: node
   linkType: hard
 

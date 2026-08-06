@@ -227,6 +227,7 @@ export function PickScreen({
       Alert.alert('Capture Error', err?.message ?? 'Failed to capture photo');
     }
   };
+  const recordStartTimeRef = useRef(0);
 
   const handleLongPress = async () => {
     if (isRecordingRef.current || isStartRecordingProcessing.current) {
@@ -236,6 +237,7 @@ export function PickScreen({
       isRecordingRef.current = true;
       setIsRecording(true);
       isStartRecordingProcessing.current = true;
+      recordStartTimeRef.current = Date.now();
       await cameraRef.current?.startRecording();
 
       const currentMaxDuration = activeCameraMode === 'STORY' && maxStoryDurationMs
@@ -304,13 +306,19 @@ export function PickScreen({
       });
 
       const video = await Promise.race([stopPromise, timeoutPromise]) as any;
+      const computedDuration = recordStartTimeRef.current > 0 ? Date.now() - recordStartTimeRef.current : 0;
       isRecordingRef.current = false;
       setIsRecording(false);
       recordingProgressAnim.setValue(0);
       if (video) {
         const videoUri = typeof video === 'string' ? video : video?.uri;
+        const finalDuration = video.durationMs || computedDuration;
         if (videoUri && !videoUri.includes('dummy_recorded_path')) {
-          handleCameraMediaCaptured(videoUri, 'video', video.width || 720, video.height || 1280, video.durationMs);
+          if (finalDuration >= 500) {
+            handleCameraMediaCaptured(videoUri, 'video', video.width || 720, video.height || 1280, finalDuration);
+          } else {
+            console.log('PickScreen: Ignored millisecond video (<500ms). Duration:', finalDuration);
+          }
         }
       }
     } catch (err: any) {
@@ -1013,23 +1021,25 @@ export function PickScreen({
             </View>
 
             {/* Top Controls */}
-            <View style={[styles.cameraHeader, { top: Math.max(insets.top, 16) }]}>
-              <Pressable style={styles.cameraCloseBtn} onPress={() => setShowCustomCamera(false)}>
-                <Ionicons name="close" size={22} color="#fff" />
-              </Pressable>
+            {!isRecording && (
+              <View style={[styles.cameraHeader, { top: Math.max(insets.top, 16) }]}>
+                <Pressable style={styles.cameraCloseBtn} onPress={() => setShowCustomCamera(false)}>
+                  <Ionicons name="close" size={22} color="#fff" />
+                </Pressable>
 
-              <Pressable
-                style={[styles.cameraFlashContainer, facing === 'front' && { opacity: 0.3 }]}
-                onPress={() => setFlashMode((f) => (f === 'on' ? 'off' : 'on'))}
-                disabled={facing === 'front'}
-              >
-                <Ionicons
-                  name={flashMode === 'on' && facing === 'back' ? 'flash' : 'flash-off'}
-                  size={22}
-                  color={flashMode === 'on' && facing === 'back' ? '#FFD700' : 'rgba(255,255,255,0.4)'}
-                />
-              </Pressable>
-            </View>
+                <Pressable
+                  style={[styles.cameraFlashContainer, facing === 'front' && { opacity: 0.3 }]}
+                  onPress={() => setFlashMode((f) => (f === 'on' ? 'off' : 'on'))}
+                  disabled={facing === 'front'}
+                >
+                  <Ionicons
+                    name={flashMode === 'on' && facing === 'back' ? 'flash' : 'flash-off'}
+                    size={22}
+                    color={flashMode === 'on' && facing === 'back' ? '#FFD700' : 'rgba(255,255,255,0.4)'}
+                  />
+                </Pressable>
+              </View>
+            )}
 
             <View
               style={[styles.cameraCaptureContainer, { bottom: Math.max(insets.bottom + 90, 90) }]}
