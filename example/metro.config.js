@@ -20,6 +20,7 @@ const defaultConfig = getDefaultConfig(__dirname);
 const config = {
   watchFolders: [root],
   resolver: {
+    unstable_enablePackageExports: false,
     blockList: [
       ...peerDeps.map(
         (m) => new RegExp(`^${escapeRegExp(path.resolve(root, 'node_modules', m))}(/.*)?$`)

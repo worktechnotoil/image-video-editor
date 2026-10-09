@@ -10,8 +10,11 @@ A high-performance, feature-rich React Native image and video editor. This libra
 * 📦 **Modular Export**: Triggers callbacks with local filesystem URIs suitable for server uploads.
 * 📱 **Multi-Select & Swiping**: Select up to 5 items simultaneously and edit them smoothly via horizontal swiping. UI state and trimming configurations perfectly sync across items.
 
-### Recent Updates (v0.1.11)
-* **Performance & Stability**: Fixed fatal UI thread crashes (`Text strings must be rendered within a <Text> component`) when transitioning to the editor screen with empty overlay states.
+### Recent Updates (v0.1.18)
+* **Camera Orientation Fix**: Fixed camera preview and video capture orientation on both iOS and Android when the device is held in landscape mode.
+* **Text Overlay Enhancements**: Added `maxTextLength` prop to limit characters in the "Add Text" popup, complete with a live counter.
+* **Dark Mode Compliance**: The "Add Text" popup now always renders correctly with a premium dark mode design, independent of the device system theme.
+* **Performance & Stability**: Fixed fatal UI thread crashes when transitioning to the editor screen with empty overlay states.
 * **Native Overlays**: Improved native resolution of bundled React Native image assets for reliable photo frame rendering across all Android versions.
 * **FFmpeg Enhancements**: Optimised FFmpeg rendering pipelines for better memory usage and resolved codec dependency failures on Android.
 
@@ -101,6 +104,7 @@ export default function App() {
           mediaType="any"
           mediaTabs={['GALLERY', 'PHOTO', 'VIDEO']}
           maxVideoDurationMs={30000} // Force trim videos longer than 30s
+          maxTextLength={50} // Restrict "Add Text" overlays to 50 characters
           onCancelPress={() => setEditorVisible(false)}
           onFinishExport={(editedMedia, paths, editedArray, cameraMode) => {
             console.log('Export completed successfully!');
@@ -141,6 +145,7 @@ const styles = StyleSheet.create({
 | `mediaType` | `'photo' \| 'video' \| 'any'` | `'any'` | Filter the library to only show photos, videos, or both. |
 | `mediaTabs` | `Array<'GALLERY' \| 'PHOTO' \| 'VIDEO'>` | `['GALLERY', 'PHOTO', 'VIDEO']` | Control which selection tabs are visible at the bottom of the picker screen. Defaults to the first array item. |
 | `maxVideoDurationMs` | `number` | `undefined` | Maximum video duration allowed in milliseconds. If a video exceeds this, the trim editor will automatically force the user to trim. |
+| `maxTextLength` | `number` | `undefined` | Maximum number of characters allowed in the Add Text popup. If omitted, there is no limit. |
 | `onCancelPress` | `() => void` | `undefined` | Callback fired when user cancels or leaves the editor. |
 | `onFinishExport` | `(editedMedia: any, paths: string[], editedArray: any[], cameraMode: string) => void` | `undefined` | Fired when edits finish exporting. Fills `paths` with target video/image file URIs. |
 

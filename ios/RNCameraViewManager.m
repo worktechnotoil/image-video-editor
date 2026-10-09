@@ -31,6 +31,36 @@
 
 @implementation RNCameraView
 
+// Helper: map UIDevice orientation to AVCaptureVideoOrientation
+- (AVCaptureVideoOrientation)avOrientationFromDeviceOrientation {
+    UIDeviceOrientation deviceOrientation = [[UIDevice currentDevice] orientation];
+    switch (deviceOrientation) {
+        case UIDeviceOrientationPortraitUpsideDown:
+            return AVCaptureVideoOrientationPortraitUpsideDown;
+        case UIDeviceOrientationLandscapeLeft:
+            // Device turned left → camera should show LandscapeRight
+            return AVCaptureVideoOrientationLandscapeRight;
+        case UIDeviceOrientationLandscapeRight:
+            // Device turned right → camera should show LandscapeLeft
+            return AVCaptureVideoOrientationLandscapeLeft;
+        default:
+            return AVCaptureVideoOrientationPortrait;
+    }
+}
+
+- (void)updatePreviewOrientation {
+    AVCaptureConnection *connection = self.previewLayer.connection;
+    if (connection && connection.supportsVideoOrientation) {
+        connection.videoOrientation = [self avOrientationFromDeviceOrientation];
+    }
+}
+
+- (void)deviceOrientationDidChange:(NSNotification *)notification {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self updatePreviewOrientation];
+    });
+}
+
 - (instancetype)initWithFrame:(CGRect)frame {
     if (self = [super initWithFrame:frame]) {
         _facing = @"front"; // default to front
@@ -56,6 +86,13 @@
             [self.session commitConfiguration];
         });
         
+        // Track device orientation changes for landscape support
+        [[UIDevice currentDevice] beginGeneratingDeviceOrientationNotifications];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(deviceOrientationDidChange:)
+                                                     name:UIDeviceOrientationDidChangeNotification
+                                                   object:nil];
+        
         [self configureInputs];
     }
     return self;
@@ -64,28 +101,13 @@
 - (void)layoutSubviews {
     [super layoutSubviews];
     self.previewLayer.frame = self.bounds;
-    
-    // Update preview orientation
-    AVCaptureConnection *connection = self.previewLayer.connection;
-    if (connection && connection.supportsVideoOrientation) {
-        UIInterfaceOrientation orientation = [[UIApplication sharedApplication] statusBarOrientation];
-        AVCaptureVideoOrientation avOrientation;
-        switch (orientation) {
-            case UIInterfaceOrientationPortraitUpsideDown:
-                avOrientation = AVCaptureVideoOrientationPortraitUpsideDown;
-                break;
-            case UIInterfaceOrientationLandscapeLeft:
-                avOrientation = AVCaptureVideoOrientationLandscapeLeft;
-                break;
-            case UIInterfaceOrientationLandscapeRight:
-                avOrientation = AVCaptureVideoOrientationLandscapeRight;
-                break;
-            default:
-                avOrientation = AVCaptureVideoOrientationPortrait;
-                break;
-        }
-        connection.videoOrientation = avOrientation;
-    }
+    // Update orientation whenever layout changes (initial load, rotation)
+    [self updatePreviewOrientation];
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+    [[UIDevice currentDevice] endGeneratingDeviceOrientationNotifications];
 }
 
 - (void)didMoveToWindow {
@@ -229,7 +251,13 @@
     self.photoResolve = resolve;
     self.photoReject = reject;
     
+    // Set the photo connection orientation before capture so the EXIF is correct
+    AVCaptureVideoOrientation captureOrientation = [self avOrientationFromDeviceOrientation];
     dispatch_async(self.sessionQueue, ^{
+        AVCaptureConnection *photoConnection = [self.photoOutput connectionWithMediaType:AVMediaTypeVideo];
+        if (photoConnection && photoConnection.supportsVideoOrientation) {
+            photoConnection.videoOrientation = captureOrientation;
+        }
         AVCapturePhotoSettings *settings = [AVCapturePhotoSettings photoSettings];
         [self.photoOutput capturePhotoWithSettings:settings delegate:self];
     });
@@ -272,35 +300,15 @@
     NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:fileName];
     NSURL *fileURL = [NSURL fileURLWithPath:path];
     
+    // Capture orientation on main thread before going async
+    __block AVCaptureVideoOrientation captureOrientation = [self avOrientationFromDeviceOrientation];
     dispatch_async(self.sessionQueue, ^{
-        // Check orientation connection
+        // Set video orientation on the movie output connection so landscape recordings are correct
         AVCaptureConnection *connection = [self.movieOutput connectionWithMediaType:AVMediaTypeVideo];
         if (connection && connection.supportsVideoOrientation) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                UIInterfaceOrientation orientation = [[UIApplication sharedApplication] statusBarOrientation];
-                AVCaptureVideoOrientation avOrientation;
-                switch (orientation) {
-                    case UIInterfaceOrientationPortraitUpsideDown:
-                        avOrientation = AVCaptureVideoOrientationPortraitUpsideDown;
-                        break;
-                    case UIInterfaceOrientationLandscapeLeft:
-                        avOrientation = AVCaptureVideoOrientationLandscapeLeft;
-                        break;
-                    case UIInterfaceOrientationLandscapeRight:
-                        avOrientation = AVCaptureVideoOrientationLandscapeRight;
-                        break;
-                    default:
-                        avOrientation = AVCaptureVideoOrientationPortrait;
-                        break;
-                }
-                dispatch_async(self.sessionQueue, ^{
-                    connection.videoOrientation = avOrientation;
-                    [self.movieOutput startRecordingToOutputFileURL:fileURL recordingDelegate:self];
-                });
-            });
-        } else {
-            [self.movieOutput startRecordingToOutputFileURL:fileURL recordingDelegate:self];
+            connection.videoOrientation = captureOrientation;
         }
+        [self.movieOutput startRecordingToOutputFileURL:fileURL recordingDelegate:self];
     });
 }
 

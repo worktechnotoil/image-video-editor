@@ -791,6 +791,10 @@ RCT_REMAP_METHOD(trimVideo,
     AVMutableVideoComposition *mutableVideoComposition = [videoComposition mutableCopy];
     mutableVideoComposition.renderSize = renderSize;
     export.videoComposition = mutableVideoComposition;
+    
+    // Clear the preferredTransform on the track because the videoComposition already applies it to the frames.
+    // If left alone, the export session preserves it in the MP4 metadata, causing the player to apply it a second time (reversing the text).
+    videoTrack.preferredTransform = CGAffineTransformIdentity;
   }
 
   // ------------------------

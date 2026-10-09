@@ -773,7 +773,7 @@ export function PickScreen({
             </Pressable>
           ) : (
             <Image
-              source={{ uri: previewUri ?? selectedMedia?.uri }}
+              source={{ uri: previewUri ?? (selectedMedia?.uri?.startsWith('ph://') ? selectedMedia?.thumbnailUri : selectedMedia?.uri) }}
               style={[styles.previewImage, cropMode === '1:1' ? styles.squareCrop : styles.originalCrop]}
               resizeMode={isRatioLocked ? 'cover' : (cropMode === '1:1' ? 'cover' : 'contain')}
             />
@@ -1476,7 +1476,7 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 10,
+    zIndex: 20,
   },
   cameraGalleryPreview: {
     width: 44,

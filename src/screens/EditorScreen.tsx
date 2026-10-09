@@ -328,6 +328,7 @@ export function EditorScreen({
   onOpenCrop,
   musicList,
   maxVideoDurationMs,
+  maxTextLength,
   isActive: screenIsActive = true,
 }: {
   items: MediaItem[];
@@ -337,6 +338,8 @@ export function EditorScreen({
   onOpenCrop: (item: MediaItem) => void;
   musicList?: MusicTrack[];
   maxVideoDurationMs?: number;
+  /** Maximum characters allowed in the Add Text popup */
+  maxTextLength?: number;
   isActive?: boolean;
 }) {
   const insets = useSafeAreaInsets();
@@ -365,6 +368,7 @@ export function EditorScreen({
     return maxVideoDurationMs ? Math.min(end, maxVideoDurationMs) : end;
   });
   const [editLayoutWidth, setEditLayoutWidth] = useState(0);
+  const [playerContainerLayout, setPlayerContainerLayout] = useState<{ width: number; height: number }>({ width: SCREEN_WIDTH, height: SCREEN_WIDTH });
 
   const [timelineWidth, setTimelineWidth] = useState(MIN_TIMELINE_WIDTH);
   const timelineWidthRef = useRef(MIN_TIMELINE_WIDTH);
@@ -810,6 +814,8 @@ export function EditorScreen({
   const [overlays, setOverlays] = useState<Array<{ id: string; text: string; x: number; y: number; color: string; fontSize: number }>>([]);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [newText, setNewText] = useState('');
+  const [textLength, setTextLength] = useState(0);
+  const newTextRef = React.useRef('');
   const isNewOverlay = React.useRef(false); // track if overlay was just created (not yet saved)
   const originalOverlayBackup = React.useRef<{ id: string; text: string; x: number; y: number; color: string; fontSize: number } | null>(null);
   const [activeDraggingId, setActiveDraggingId] = useState<string | null>(null);
@@ -858,7 +864,9 @@ export function EditorScreen({
   const addCaption = () => {
     if (!captionInput.trim()) return;
     pushToHistory();
-    setCaptions(prev => [...prev, { id: Date.now().toString(), text: captionInput.trim(), style: captionStyle, x: CARD_WIDTH / 2 - 40, y: (SCREEN_WIDTH * 1.25) / 2 - 20 }]);
+    const currentAspect = typeof cropRatio === 'number' ? cropRatio : (dimensions.width / (dimensions.height || 1));
+    const containerHeight = CARD_WIDTH / (currentAspect || 1);
+    setCaptions(prev => [...prev, { id: Date.now().toString(), text: captionInput.trim(), style: captionStyle, x: CARD_WIDTH / 2 - 40, y: containerHeight / 2 - 20 }]);
     setCaptionInput('');
   };
   const removeCaption = (id: string) => {
@@ -869,11 +877,13 @@ export function EditorScreen({
   const addTextOverlay = () => {
     pushToHistory();
     const id = Date.now().toString();
+    const currentAspect = typeof cropRatio === 'number' ? cropRatio : (dimensions.width / (dimensions.height || 1));
+    const containerHeight = CARD_WIDTH / (currentAspect || 1);
     const newItem = {
       id,
       text: '', // start empty so placeholder shows
       x: CARD_WIDTH / 2 - 40,
-      y: (SCREEN_WIDTH * 1.25) / 2 - 20,
+      y: containerHeight / 2 - 20,
       color: '#FFFFFF',
       fontSize: 24,
     };
@@ -881,6 +891,8 @@ export function EditorScreen({
     setOverlays(prev => [...prev, newItem]);
     setEditingTextId(id);
     setNewText('');
+    newTextRef.current = '';
+    setTextLength(0);
     isNewOverlay.current = true;
     originalOverlayBackup.current = null;
     setPanel('text');
@@ -2319,6 +2331,8 @@ export function EditorScreen({
                   isNewOverlay.current = false;
                   setEditingTextId(id);
                   setNewText(found.text);
+                  newTextRef.current = found.text;
+                  setTextLength(found.text.length);
                   setPanel('text');
                 }
               }}
@@ -2431,6 +2445,7 @@ export function EditorScreen({
             {/* Centered Small Video Player */}
             <View
               style={styles.editModePlayerContainer}
+              onLayout={(e) => setPlayerContainerLayout(e.nativeEvent.layout)}
               {...(panel === 'transform' ? cropPan.panHandlers : {})}
             >
               <View
@@ -2441,9 +2456,8 @@ export function EditorScreen({
                   }
                 }}
                 style={{
-                  width: '100%',
-                  aspectRatio: videoAspect || 1,
-                  maxHeight: '100%',
+                  width: Math.min(playerContainerLayout.width, playerContainerLayout.height * (videoAspect || 1)),
+                  height: Math.min(playerContainerLayout.width, playerContainerLayout.height * (videoAspect || 1)) / (videoAspect || 1),
                   justifyContent: 'center',
                   alignItems: 'center',
                   overflow: 'hidden',
@@ -2911,12 +2925,14 @@ export function EditorScreen({
                   </View>
                   <Text style={styles.toolLabel}>Filter</Text>
                 </Pressable>
+                {/* 
                 <Pressable style={[styles.toolButton, panel === 'frame' && styles.toolButtonActive]} onPress={() => setPanel(panel === 'frame' ? 'trim' : 'frame')}>
                   <View style={styles.toolIconContainer}>
                     <Ionicons name="images" size={22} color="#fff" />
                   </View>
                   <Text style={styles.toolLabel}>Overlay</Text>
                 </Pressable>
+                */}
                 <Pressable style={[styles.toolButton, panel === 'edit' && styles.toolButtonActive]} onPress={() => setPanel(panel === 'edit' ? 'trim' : 'edit')}>
                   <View style={styles.toolIconContainer}>
                     <Ionicons name="settings-outline" size={22} color="#fff" />
@@ -3001,6 +3017,8 @@ export function EditorScreen({
                       isNewOverlay.current = false;
                       setEditingTextId(id);
                       setNewText(found.text);
+                      newTextRef.current = found.text;
+                      setTextLength(found.text.length);
                       setPanel('text');
                     }
                   }}
@@ -3045,12 +3063,14 @@ export function EditorScreen({
                   </View>
                   <Text style={styles.toolLabel}>Trim</Text>
                 </Pressable>
+                {/*
                 <Pressable style={[styles.toolButton, panel === 'frame' && styles.toolButtonActive]} onPress={() => { setIsEditingVideo(true); setPanel('frame'); }}>
                   <View style={styles.toolIconContainer}>
                     <Ionicons name="images" size={22} color="#fff" />
                   </View>
                   <Text style={styles.toolLabel}>Overlay</Text>
                 </Pressable>
+                */}
                 <Pressable style={[styles.toolButton, panel === 'filter' && styles.toolButtonActive]} onPress={() => { setIsEditingVideo(true); setPanel('filter'); }}>
                   <View style={styles.toolIconContainer}>
                     <Ionicons name="color-palette" size={22} color="#fff" />
@@ -3486,12 +3506,14 @@ export function EditorScreen({
                     <Text style={styles.toolLabel}>Trim</Text>
                   </Pressable>
                 )}
+                {/*
                 <Pressable style={[styles.toolButton, panel === 'frame' && styles.toolButtonActive]} onPress={() => setPanel('frame')}>
                   <View style={styles.toolIconContainer}>
                     <Ionicons name="images" size={22} color="#fff" />
                   </View>
                   <Text style={styles.toolLabel}>Overlay</Text>
                 </Pressable>
+                */}
                 <Pressable style={[styles.toolButton, panel === 'filter' && styles.toolButtonActive]} onPress={() => setPanel('filter')}>
                   <View style={styles.toolIconContainer}>
                     <Ionicons name="color-palette" size={22} color="#fff" />
@@ -3823,19 +3845,26 @@ export function EditorScreen({
       <Modal visible={!!editingTextId} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.controlSubTitle}>ADD TEXT</Text>
+            {/* Title row with optional char counter */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: 6 }}>
+              <Text style={styles.controlSubTitle}>ADD TEXT</Text>
+              {maxTextLength != null && (
+                <Text style={{ color: textLength >= maxTextLength ? '#ff4444' : '#666', fontSize: 12, fontWeight: '600' }}>
+                  {textLength}/{maxTextLength}
+                </Text>
+              )}
+            </View>
             <TextInput
               style={[
                 styles.modalInput,
                 { color: overlays.find(o => o.id === editingTextId)?.color || '#FFFFFF' }
               ]}
-              value={newText}
+              defaultValue={newText}
               onChangeText={(txt) => {
-                setNewText(txt);
-                if (editingTextId) {
-                  updateTextOverlay(editingTextId, { text: txt });
-                }
+                newTextRef.current = txt;
+                setTextLength(txt.length);
               }}
+              maxLength={maxTextLength}
               autoFocus
               placeholder="Type something..."
               placeholderTextColor="#555"
@@ -3876,6 +3905,8 @@ export function EditorScreen({
                   setTimeout(() => {
                     setEditingTextId(null);
                     setNewText('');
+                    newTextRef.current = '';
+                    setTextLength(0);
                   }, 50);
                 }}
                 style={styles.modalBtn}
@@ -3885,10 +3916,11 @@ export function EditorScreen({
               <Pressable
                 onPress={() => {
                   if (editingTextId) {
-                    if (!newText.trim()) {
+                    const finalTxt = newTextRef.current;
+                    if (!finalTxt.trim()) {
                       setOverlays(prev => prev.filter(o => o.id !== editingTextId));
                     } else {
-                      setOverlays(prev => prev.map(o => o.id === editingTextId ? { ...o, text: newText.trim() } : o));
+                      setOverlays(prev => prev.map(o => o.id === editingTextId ? { ...o, text: finalTxt.trim() } : o));
                     }
                   }
                   isNewOverlay.current = false;
@@ -3897,6 +3929,8 @@ export function EditorScreen({
                   setTimeout(() => {
                     setEditingTextId(null);
                     setNewText('');
+                    newTextRef.current = '';
+                    setTextLength(0);
                   }, 50);
                 }}
                 style={[styles.modalBtn, styles.modalBtnPrimary]}
@@ -4738,10 +4772,17 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     width: '100%',
-    backgroundColor: '#1a1a1a',
-    borderRadius: 15,
+    backgroundColor: '#1a1a1a',  // Always dark — independent of system theme
+    borderRadius: 16,
     padding: 20,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    elevation: 10,
   },
   modalInput: {
     width: '100%',

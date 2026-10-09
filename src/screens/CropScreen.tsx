@@ -18,6 +18,7 @@ import type { MediaItem } from '../types';
 import { editImage, trimVideo } from '../native/MediaEditor';
 import { captureFrame } from '../native/FrameGrabber';
 import { VideoPreview } from '../native/VideoPreview';
+import { exportAsset } from '../native/MediaLibrary';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -144,15 +145,26 @@ export function CropScreen({ item, onBack, onSave, onReset, aspectRatio = 'free'
     renderedImageSizeRef.current = renderedImageSize;
   }, [renderedImageSize]);
 
+  const [resolvedUri, setResolvedUri] = useState<string | null>(
+    item.uri.startsWith('ph://') || item.uri.startsWith('content://') ? null : item.uri
+  );
+
   useEffect(() => {
+    if (item.uri.startsWith('ph://') || item.uri.startsWith('content://')) {
+      exportAsset(item.id).then(setResolvedUri).catch(() => setResolvedUri(item.thumbnailUri ?? item.uri));
+    }
+  }, [item.uri, item.id, item.thumbnailUri]);
+
+  useEffect(() => {
+    if (!resolvedUri) return;
     if (item.type === 'image') {
-      Image.getSize(item.uri, (w, h) => {
+      Image.getSize(resolvedUri, (w, h) => {
         setImageSize({ width: w, height: h });
       });
     } else {
       (async () => {
         try {
-          const frameUri = await captureFrame(item.uri, { timeMs: 0 });
+          const frameUri = await captureFrame(resolvedUri, { timeMs: 0 });
           Image.getSize(frameUri, (w, h) => {
             setImageSize({ width: w, height: h });
           });
@@ -161,7 +173,7 @@ export function CropScreen({ item, onBack, onSave, onReset, aspectRatio = 'free'
         }
       })();
     }
-  }, [item.uri, item.type]);
+  }, [resolvedUri, item.type]);
 
   // Calculate the actual area occupied by the image (contain)
   useEffect(() => {
@@ -481,7 +493,7 @@ export function CropScreen({ item, onBack, onSave, onReset, aspectRatio = 'free'
 
   return (
     <View style={styles.container}>
-      <SafeAreaView style={styles.safeArea} edges={['left', 'right', 'bottom']}>
+      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right', 'bottom']}>
         <View style={styles.topBar}>
           <Pressable onPress={onBack} style={styles.topBtn}>
             <Text style={{ color: '#fff', fontSize: 16 }}>Cancel</Text>
@@ -508,7 +520,7 @@ export function CropScreen({ item, onBack, onSave, onReset, aspectRatio = 'free'
                  }}>
                     {item.type === 'video' ? (
                       <VideoPreview
-                        uri={item.uri}
+                        uri={resolvedUri || item.thumbnailUri || item.uri}
                         paused={false}
                         muted={true}
                         style={[
@@ -531,7 +543,7 @@ export function CropScreen({ item, onBack, onSave, onReset, aspectRatio = 'free'
                       />
                     ) : (
                       <Image 
-                          source={{ uri: item.uri }} 
+                          source={{ uri: resolvedUri || item.thumbnailUri || item.uri }} 
                           style={[
                               styles.media, 
                               { 

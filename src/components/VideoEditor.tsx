@@ -47,6 +47,11 @@ export interface VideoEditorProps {
   mediaType?: 'photo' | 'video' | 'any';
   /** Control which tabs are shown in the picker. Default: ['GALLERY', 'PHOTO', 'VIDEO'] */
   mediaTabs?: ('GALLERY' | 'PHOTO' | 'VIDEO')[];
+  /**
+   * Maximum number of characters allowed in the Add Text popup.
+   * If not set, there is no limit.
+   */
+  maxTextLength?: number;
 }
 
 export default function VideoEditor({
@@ -65,6 +70,7 @@ export default function VideoEditor({
   maxStoryDurationMs,
   mediaType = 'any',
   mediaTabs = ['GALLERY', 'PHOTO', 'VIDEO'],
+  maxTextLength,
 }: VideoEditorProps) {
   const clampedMax = Math.max(1, maxSelection);
   const isDarkMode = useColorScheme() === 'dark';
@@ -220,6 +226,7 @@ export default function VideoEditor({
                 setScreen('crop');
               }}
               musicList={musicList}
+              maxTextLength={maxTextLength}
             />
           </View>
         )}

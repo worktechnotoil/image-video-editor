@@ -14,6 +14,7 @@ import android.os.HandlerThread
 import android.util.Log
 import android.view.Surface
 import android.view.TextureView
+import android.view.WindowManager
 import android.widget.FrameLayout
 import com.facebook.react.bridge.*
 import com.facebook.react.uimanager.SimpleViewManager
@@ -55,6 +56,28 @@ class RNCameraView(context: Context) : FrameLayout(context) {
     private var previewBuilder: CaptureRequest.Builder? = null
 
     private var currentPreviewSize: android.util.Size = android.util.Size(1920, 1080)
+
+    /**
+     * Returns the correct JPEG/video orientation that accounts for both
+     * the camera sensor rotation and the current device (display) rotation.
+     */
+    private fun getJpegOrientation(sensorOrientation: Int): Int {
+        val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        val displayRotation = windowManager.defaultDisplay.rotation
+        val deviceDegrees = when (displayRotation) {
+            Surface.ROTATION_0   -> 0
+            Surface.ROTATION_90  -> 90
+            Surface.ROTATION_180 -> 180
+            Surface.ROTATION_270 -> 270
+            else -> 0
+        }
+        return if (facing == "front") {
+            // Front camera is mirrored, so reverse the compensation
+            (sensorOrientation + deviceDegrees + 360) % 360
+        } else {
+            (sensorOrientation - deviceDegrees + 360) % 360
+        }
+    }
 
     private val textureListener = object : TextureView.SurfaceTextureListener {
         override fun onSurfaceTextureAvailable(texture: SurfaceTexture, width: Int, height: Int) {
@@ -346,7 +369,7 @@ class RNCameraView(context: Context) : FrameLayout(context) {
             val manager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
             val chars = manager.getCameraCharacteristics(device.id)
             val sensorOrientation = chars.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
-            captureBuilder.set(CaptureRequest.JPEG_ORIENTATION, sensorOrientation)
+            captureBuilder.set(CaptureRequest.JPEG_ORIENTATION, getJpegOrientation(sensorOrientation))
 
             val hasFlash = chars.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) ?: false
             if (hasFlash) {
@@ -431,8 +454,8 @@ class RNCameraView(context: Context) : FrameLayout(context) {
                     setVideoEncoder(MediaRecorder.VideoEncoder.H264)
                     setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
                     
-                    // Front camera video needs correct rotation
-                    setOrientationHint(sensorOrientation)
+                    // Use actual device rotation + sensor orientation for correct landscape recording
+                    setOrientationHint(getJpegOrientation(sensorOrientation))
                     prepare()
                 }
 

@@ -66,6 +66,7 @@ export default function App() {
           mediaType="any"
           mediaTabs={['GALLERY', 'PHOTO', 'VIDEO']}
           maxVideoDurationMs={30000}
+          maxTextLength={50}
           onCancelPress={() => setEditorVisible(false)}
           onFinishExport={handleFinishExport}
           musicList={DUMMY_MUSIC_LIST}
