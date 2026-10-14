@@ -123,17 +123,27 @@ class FaceAnalyzer(
     }
     pb.rewind()
 
-    buffer.rewind()
+    val capacity = buffer.capacity()
+    val bufLimit = buffer.limit()
+    val maxAvailable = minOf(capacity, bufLimit)
+
     if (rowStride == rowWidthBytes) {
+      buffer.position(0)
+      val toCopy = minOf(maxAvailable, totalBytes)
+      buffer.limit(toCopy)
       pb.put(buffer)
     } else {
-      val oldLimit = buffer.limit()
       for (y in 0 until h) {
-        buffer.position(y * rowStride)
-        buffer.limit(buffer.position() + rowWidthBytes)
-        pb.put(buffer)
+        val rowStart = y * rowStride
+        if (rowStart >= maxAvailable) break
+        buffer.limit(maxAvailable)
+        buffer.position(rowStart)
+        val copyLen = minOf(rowWidthBytes, maxAvailable - rowStart)
+        if (copyLen > 0) {
+          buffer.limit(rowStart + copyLen)
+          pb.put(buffer)
+        }
       }
-      buffer.limit(oldLimit)
     }
     pb.rewind()
     rawBitmap.copyPixelsFromBuffer(pb)
