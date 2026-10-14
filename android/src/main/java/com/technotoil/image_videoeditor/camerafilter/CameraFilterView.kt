@@ -339,21 +339,28 @@ class CameraFilterView(context: Context, attrs: AttributeSet? = null) : View(con
       // ~8x the pixel count requested, tanking every downstream conversion/detection/draw
       // step). ResolutionSelector with a bounded ResolutionStrategy actually constrains the
       // chosen stream size instead of merely suggesting it.
+      val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as? android.view.WindowManager
+      val rotation = windowManager?.defaultDisplay?.rotation ?: android.view.Surface.ROTATION_0
+      val isPortrait = (rotation == android.view.Surface.ROTATION_0 || rotation == android.view.Surface.ROTATION_180)
+      val targetSize = if (isPortrait) Size(720, 1280) else Size(1280, 720)
+
       val resolutionSelector = ResolutionSelector.Builder()
         .setAspectRatioStrategy(AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY)
         .setResolutionStrategy(
-          ResolutionStrategy(Size(1280, 720), ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER),
+          ResolutionStrategy(targetSize, ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER),
         )
         .build()
 
       val analysis = ImageAnalysis.Builder()
         .setResolutionSelector(resolutionSelector)
+        .setTargetRotation(rotation)
         .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
         .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
         .build()
 
       val preview = androidx.camera.core.Preview.Builder()
         .setResolutionSelector(resolutionSelector)
+        .setTargetRotation(rotation)
         .build()
       preview.setSurfaceProvider { request ->
         val surfaceTexture = android.graphics.SurfaceTexture(0)

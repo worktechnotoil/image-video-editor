@@ -150,7 +150,14 @@
         AVCaptureConnection *conn =
             [self.videoOutput connectionWithMediaType:AVMediaTypeVideo];
         if (conn.isVideoOrientationSupported) {
-          conn.videoOrientation = AVCaptureVideoOrientationPortrait;
+          UIDeviceOrientation orientation = [[UIDevice currentDevice] orientation];
+          if (orientation == UIDeviceOrientationLandscapeLeft) {
+            conn.videoOrientation = AVCaptureVideoOrientationLandscapeRight;
+          } else if (orientation == UIDeviceOrientationLandscapeRight) {
+            conn.videoOrientation = AVCaptureVideoOrientationLandscapeLeft;
+          } else {
+            conn.videoOrientation = AVCaptureVideoOrientationPortrait;
+          }
         }
         if (conn.isVideoMirroringSupported) {
           conn.videoMirrored = (position == AVCaptureDevicePositionFront);
