@@ -34,6 +34,10 @@ class CameraFilterView(context: Context, attrs: AttributeSet? = null) : View(con
 
 
 
+  init {
+    setBackgroundColor(0xFF000000.toInt())
+  }
+
   private var currentFilter: FilterId = FilterId.NONE
   private var frame: Bitmap? = null
   private var faceAnalyzer: FaceAnalyzer? = null
@@ -374,8 +378,24 @@ class CameraFilterView(context: Context, attrs: AttributeSet? = null) : View(con
       faceAnalyzer = analyzer
       analysis.setAnalyzer(analysisExecutor, analyzer)
 
-      val activity = (context as? com.facebook.react.uimanager.ThemedReactContext)?.currentActivity as? androidx.lifecycle.LifecycleOwner
-      val lifecycleOwner = this@CameraFilterView.findViewTreeLifecycleOwner() ?: activity ?: return@addListener
+      var foundOwner: androidx.lifecycle.LifecycleOwner? = this@CameraFilterView.findViewTreeLifecycleOwner()
+      if (foundOwner == null) {
+        var ctx = context
+        while (ctx is android.content.ContextWrapper) {
+          if (ctx is androidx.lifecycle.LifecycleOwner) {
+            foundOwner = ctx
+            break
+          }
+          ctx = ctx.baseContext
+        }
+      }
+      if (foundOwner == null) {
+        val currentAct = (context as? com.facebook.react.uimanager.ThemedReactContext)?.currentActivity
+        if (currentAct is androidx.lifecycle.LifecycleOwner) {
+          foundOwner = currentAct
+        }
+      }
+      val lifecycleOwner = foundOwner ?: return@addListener
       provider.unbindAll()
       val cameraSelector = if (facingStr == "back") CameraSelector.DEFAULT_BACK_CAMERA else CameraSelector.DEFAULT_FRONT_CAMERA
       provider.bindToLifecycle(

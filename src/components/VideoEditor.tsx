@@ -117,8 +117,9 @@ export default function VideoEditor({
           backgroundColor="transparent"
           translucent={true}
         />
-        <View style={{ flex: 1 }}>
-          <PickScreen
+        {screen === "pick" && (
+          <View style={{ flex: 1 }}>
+            <PickScreen
             isActive={screen === 'pick'}
             items={items}
             headerTitle={headerTitle}
@@ -178,14 +179,15 @@ export default function VideoEditor({
               }
             }}
           />
-          {processing && (
-            <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }}>
-              <ActivityIndicator size="large" color="#ffffff" />
-            </View>
-          )}
-        </View>
-        {current && screen !== 'pick' && (
-          <View style={[StyleSheet.absoluteFillObject, { zIndex: 100, elevation: 100, backgroundColor: '#000', display: screen === 'editor' ? 'flex' : 'none' }]}>
+            {processing && (
+              <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }}>
+                <ActivityIndicator size="large" color="#ffffff" />
+              </View>
+            )}
+          </View>
+        )}
+        {screen === 'editor' && current && (
+          <View style={{ flex: 1 }}>
             <EditorScreen
               key={items.map(i => i.id + '_' + (i.uri || '')).join(',')}
               isActive={screen === 'editor'}

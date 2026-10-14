@@ -4,6 +4,7 @@
 
 - (instancetype)initWithFrame:(CGRect)frame {
   if (self = [super initWithFrame:frame]) {
+    self.backgroundColor = [UIColor blackColor];
     _facing = @"front";
     _filter = @"none";
     _ciContext = [CIContext contextWithOptions:nil];
