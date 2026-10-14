@@ -289,7 +289,19 @@ class CameraFilterView(context: Context, attrs: AttributeSet? = null) : View(con
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
     activeInstance = this
-    startCamera()
+    setBackgroundColor(0xFF000000.toInt())
+    post {
+      startCamera()
+    }
+  }
+
+  override fun onConfigurationChanged(newConfig: android.content.res.Configuration?) {
+    super.onConfigurationChanged(newConfig)
+    post {
+      if (cameraProvider != null) {
+        startCamera()
+      }
+    }
   }
 
   override fun onDetachedFromWindow() {
