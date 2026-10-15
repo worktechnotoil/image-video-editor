@@ -416,13 +416,28 @@ class CameraFilterView(context: Context, attrs: AttributeSet? = null) : View(con
       }
       val lifecycleOwner = foundOwner ?: return@addListener
       provider.unbindAll()
-      val cameraSelector = if (facingStr == "back") CameraSelector.DEFAULT_BACK_CAMERA else CameraSelector.DEFAULT_FRONT_CAMERA
-      provider.bindToLifecycle(
-        lifecycleOwner,
-        cameraSelector,
-        preview,
-        analysis,
-      )
+      val primarySelector = if (facingStr == "back") CameraSelector.DEFAULT_BACK_CAMERA else CameraSelector.DEFAULT_FRONT_CAMERA
+      val fallbackSelector = if (facingStr == "back") CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
+
+      try {
+        if (provider.hasCamera(primarySelector)) {
+          provider.bindToLifecycle(lifecycleOwner, primarySelector, preview, analysis)
+        } else if (provider.hasCamera(fallbackSelector)) {
+          facingStr = if (facingStr == "back") "front" else "back"
+          provider.bindToLifecycle(lifecycleOwner, fallbackSelector, preview, analysis)
+        }
+      } catch (e: Exception) {
+        try {
+          // Fallback without strict preview resolution if device camera HAL rejects it
+          provider.unbindAll()
+          val fallbackAnalysis = ImageAnalysis.Builder()
+            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+            .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
+            .build()
+          fallbackAnalysis.setAnalyzer(analysisExecutor, analyzer)
+          provider.bindToLifecycle(lifecycleOwner, primarySelector, fallbackAnalysis)
+        } catch (ignored: Exception) {}
+      }
     }, ContextCompat.getMainExecutor(context))
   }
 

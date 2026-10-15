@@ -768,7 +768,9 @@ export function EditorScreen({
 
   const [thumbnails, setThumbnails] = useState<string[]>([]);
   const [isMuted, setIsMuted] = useState(false);
-  const [isEditingVideo, setIsEditingVideo] = useState(false);
+  const [isEditingVideo, setIsEditingVideo] = useState(() => {
+    return !!(item.type === 'video' && maxVideoDurationMs && item.durationMs && item.durationMs > maxVideoDurationMs);
+  });
   const [currentTimeMs, setCurrentTimeMs] = useState(0);
   const [seekToMs, setSeekToMs] = useState<number>(-1);
   const [scrollEnabled, setScrollEnabled] = useState(true);
@@ -1436,20 +1438,25 @@ export function EditorScreen({
 
         startX.current = newX;
         updateNativeRefs(newX, endX.current);
-        throttledSeek(newTime);
       },
       onPanResponderRelease: () => {
         isDraggingHandle.current = false;
         setScrollEnabled(true);
-        setTrimStart((startX.current / timelineWidthRef.current) * durationRef.current);
-        setTrimEnd((endX.current / timelineWidthRef.current) * durationRef.current);
+        const finalStart = (startX.current / timelineWidthRef.current) * durationRef.current;
+        const finalEnd = (endX.current / timelineWidthRef.current) * durationRef.current;
+        setTrimStart(finalStart);
+        setTrimEnd(finalEnd);
+        setCurrentTimeMs(finalStart);
+        throttledSeek(finalStart);
         setSeekToMs(-1);
       },
       onPanResponderTerminate: () => {
         isDraggingHandle.current = false;
         setScrollEnabled(true);
-        setTrimStart((startX.current / timelineWidthRef.current) * durationRef.current);
-        setTrimEnd((endX.current / timelineWidthRef.current) * durationRef.current);
+        const finalStart = (startX.current / timelineWidthRef.current) * durationRef.current;
+        const finalEnd = (endX.current / timelineWidthRef.current) * durationRef.current;
+        setTrimStart(finalStart);
+        setTrimEnd(finalEnd);
         setSeekToMs(-1);
       }
     })
@@ -1489,22 +1496,26 @@ export function EditorScreen({
         startX.current = newStartX;
         endX.current = newEndX;
 
-        const newStartTime = (newStartX / timelineWidthRef.current) * durationRef.current;
         updateNativeRefs(newStartX, newEndX);
-        throttledSeek(newStartTime);
       },
       onPanResponderRelease: () => {
         isDraggingHandle.current = false;
         setScrollEnabled(true);
-        setTrimStart((startX.current / timelineWidthRef.current) * durationRef.current);
-        setTrimEnd((endX.current / timelineWidthRef.current) * durationRef.current);
+        const finalStart = (startX.current / timelineWidthRef.current) * durationRef.current;
+        const finalEnd = (endX.current / timelineWidthRef.current) * durationRef.current;
+        setTrimStart(finalStart);
+        setTrimEnd(finalEnd);
+        setCurrentTimeMs(finalStart);
+        throttledSeek(finalStart);
         setSeekToMs(-1);
       },
       onPanResponderTerminate: () => {
         isDraggingHandle.current = false;
         setScrollEnabled(true);
-        setTrimStart((startX.current / timelineWidthRef.current) * durationRef.current);
-        setTrimEnd((endX.current / timelineWidthRef.current) * durationRef.current);
+        const finalStart = (startX.current / timelineWidthRef.current) * durationRef.current;
+        const finalEnd = (endX.current / timelineWidthRef.current) * durationRef.current;
+        setTrimStart(finalStart);
+        setTrimEnd(finalEnd);
         setSeekToMs(-1);
       }
     })
@@ -1535,20 +1546,25 @@ export function EditorScreen({
 
         endX.current = newX;
         updateNativeRefs(startX.current, newX);
-        throttledSeek(newTime);
       },
       onPanResponderRelease: () => {
         isDraggingHandle.current = false;
         setScrollEnabled(true);
-        setTrimStart((startX.current / timelineWidthRef.current) * durationRef.current);
-        setTrimEnd((endX.current / timelineWidthRef.current) * durationRef.current);
+        const finalStart = (startX.current / timelineWidthRef.current) * durationRef.current;
+        const finalEnd = (endX.current / timelineWidthRef.current) * durationRef.current;
+        setTrimStart(finalStart);
+        setTrimEnd(finalEnd);
+        setCurrentTimeMs(finalStart);
+        throttledSeek(finalStart);
         setSeekToMs(-1);
       },
       onPanResponderTerminate: () => {
         isDraggingHandle.current = false;
         setScrollEnabled(true);
-        setTrimStart((startX.current / timelineWidthRef.current) * durationRef.current);
-        setTrimEnd((endX.current / timelineWidthRef.current) * durationRef.current);
+        const finalStart = (startX.current / timelineWidthRef.current) * durationRef.current;
+        const finalEnd = (endX.current / timelineWidthRef.current) * durationRef.current;
+        setTrimStart(finalStart);
+        setTrimEnd(finalEnd);
         setSeekToMs(-1);
       }
     })
