@@ -21,7 +21,6 @@ import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.findViewTreeLifecycleOwner
-import androidx.lifecycle.findViewTreeLifecycleOwner
 import java.util.concurrent.Executors
 import com.facebook.react.bridge.Promise
 import java.io.File
@@ -409,7 +408,9 @@ class CameraFilterView(context: Context, attrs: AttributeSet? = null) : View(con
         }
       }
       if (foundOwner == null) {
-        val currentAct = (context as? com.facebook.react.uimanager.ThemedReactContext)?.currentActivity
+        val reactContext = context as? com.facebook.react.bridge.ReactContext
+          ?: (context as? com.facebook.react.uimanager.ThemedReactContext)
+        val currentAct = reactContext?.currentActivity
         if (currentAct is androidx.lifecycle.LifecycleOwner) {
           foundOwner = currentAct
         }

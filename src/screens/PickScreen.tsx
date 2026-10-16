@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
+  BackHandler,
   FlatList,
   Image,
   Modal,
@@ -185,6 +186,12 @@ export function PickScreen({
   useEffect(() => {
     if (showCustomCamera) {
       setActiveFilter('none');
+      const onBackPress = () => {
+        setShowCustomCamera(false);
+        return true;
+      };
+      const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => subscription.remove();
     } else {
       isRecordingRef.current = false;
       setIsRecording(false);
@@ -984,13 +991,8 @@ export function PickScreen({
 
       </View>
 
-      <Modal
-        visible={showCustomCamera}
-        animationType="none"
-        transparent={false}
-        onRequestClose={() => setShowCustomCamera(false)}
-      >
-        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#000' }]}>
+      {showCustomCamera && (
+        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#000', zIndex: 9999 }]}>
           <View style={styles.cameraContainer}>
             <CameraFilterView
               ref={cameraRef}
@@ -1104,7 +1106,7 @@ export function PickScreen({
             </View>
           </View>
         </View>
-      </Modal>
+      )}
     </View>
   );
 }
