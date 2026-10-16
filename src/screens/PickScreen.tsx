@@ -992,13 +992,13 @@ export function PickScreen({
       </View>
 
       {showCustomCamera && (
-        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#000', zIndex: 9999 }]}>
-          <View style={styles.cameraContainer}>
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#000', zIndex: 9999, elevation: 9999 }]}>
+          <View style={[styles.cameraContainer, StyleSheet.absoluteFill]}>
             <CameraFilterView
               ref={cameraRef}
               filter={activeFilter}
               facing={facing}
-              style={StyleSheet.absoluteFillObject}
+              style={[StyleSheet.absoluteFill, { width: '100%', height: '100%', backgroundColor: '#000' }]}
             />
 
 

@@ -71,7 +71,6 @@ class CameraFilterView(context: Context, attrs: AttributeSet? = null) : View(con
 
   private val mirrorMatrix = Matrix()
   private var cameraProvider: ProcessCameraProvider? = null
-  private val analysisExecutor = Executors.newSingleThreadExecutor()
   private var facingStr: String = "front"
 
   fun setFacing(facing: String?) {
@@ -285,10 +284,15 @@ class CameraFilterView(context: Context, attrs: AttributeSet? = null) : View(con
   }
 
 
+  @Volatile private var analysisExecutor = Executors.newSingleThreadExecutor()
+
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
     activeInstance = this
     setBackgroundColor(0xFF000000.toInt())
+    if (analysisExecutor.isShutdown) {
+      analysisExecutor = Executors.newSingleThreadExecutor()
+    }
     post {
       startCamera()
     }
@@ -415,7 +419,16 @@ class CameraFilterView(context: Context, attrs: AttributeSet? = null) : View(con
           foundOwner = currentAct
         }
       }
-      val lifecycleOwner = foundOwner ?: return@addListener
+      val lifecycleOwner = foundOwner
+      if (lifecycleOwner == null) {
+        // View might not be attached to lifecycle tree yet, retry after a short delay
+        postDelayed({
+          if (isAttachedToWindow && cameraProvider != null) {
+            startCamera()
+          }
+        }, 150)
+        return@addListener
+      }
       provider.unbindAll()
       val primarySelector = if (facingStr == "back") CameraSelector.DEFAULT_BACK_CAMERA else CameraSelector.DEFAULT_FRONT_CAMERA
       val fallbackSelector = if (facingStr == "back") CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
