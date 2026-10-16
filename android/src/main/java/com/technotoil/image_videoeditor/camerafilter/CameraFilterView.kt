@@ -85,49 +85,49 @@ class CameraFilterView(context: Context, attrs: AttributeSet? = null) : View(con
     }
   }
 
+  private fun loadDrawableBitmap(name: String, fallbackWidth: Int = 100, fallbackHeight: Int = 100): Bitmap {
+    try {
+      var resId = context.resources.getIdentifier(name, "drawable", context.packageName)
+      if (resId == 0) {
+        resId = context.resources.getIdentifier(name, "drawable", "com.technotoil.image_videoeditor")
+      }
+      if (resId != 0) {
+        val bmp = BitmapFactory.decodeResource(context.resources, resId)
+        if (bmp != null) return bmp
+      }
+    } catch (e: Exception) {}
+    // Safe transparent fallback bitmap so camera feed continues rendering without crash
+    return Bitmap.createBitmap(fallbackWidth, fallbackHeight, Bitmap.Config.ARGB_8888)
+  }
+
   // Lazy-loaded bow bitmap for the pookie bow filter
   private var bowBitmap: Bitmap? = null
   private fun getBowBitmap(): Bitmap {
-    return bowBitmap ?: BitmapFactory.decodeResource(
-      context.resources,
-      context.resources.getIdentifier("bow_pookie", "drawable", context.packageName)
-    ).also { bowBitmap = it }
+    return bowBitmap ?: loadDrawableBitmap("bow_pookie", 100, 100).also { bowBitmap = it }
   }
 
   // Lazy-loaded panda bitmap for the panda filter
   private var pandaBitmap: Bitmap? = null
   private fun getPandaBitmap(): Bitmap {
-    return pandaBitmap ?: BitmapFactory.decodeResource(
-      context.resources,
-      context.resources.getIdentifier("panda_face", "drawable", context.packageName)
-    ).also { pandaBitmap = it }
+    return pandaBitmap ?: loadDrawableBitmap("panda_face", 100, 100).also { pandaBitmap = it }
   }
 
   // Lazy-loaded skull bitmap for the retro skull filter
   private var skullBitmap: Bitmap? = null
   private fun getSkullBitmap(): Bitmap {
-    return skullBitmap ?: BitmapFactory.decodeResource(
-      context.resources,
-      context.resources.getIdentifier("retro_skull", "drawable", context.packageName)
-    ).also { skullBitmap = it }
+    return skullBitmap ?: loadDrawableBitmap("retro_skull", 100, 100).also { skullBitmap = it }
   }
 
   // Lazy-loaded fashion background for the fashion overlay filter
   private var fashionBitmap: Bitmap? = null
   private fun getFashionBitmap(): Bitmap {
-    return fashionBitmap ?: BitmapFactory.decodeResource(
-      context.resources,
-      context.resources.getIdentifier("fashion_girl", "drawable", context.packageName)
-    ).also { fashionBitmap = it }
+    return fashionBitmap ?: loadDrawableBitmap("fashion_girl", 720, 1280).also { fashionBitmap = it }
   }
 
   // Lazy-loaded talking forest background for the talking forest filter
   private var forestBitmap: Bitmap? = null
   private fun getForestBitmap(): Bitmap {
-    return forestBitmap ?: BitmapFactory.decodeResource(
-      context.resources,
-      context.resources.getIdentifier("talking_forest", "drawable", context.packageName)
-    ).also { forestBitmap = it }
+    return forestBitmap ?: loadDrawableBitmap("talking_forest", 720, 1280).also { forestBitmap = it }
   }
 
   fun setFilter(id: String) {
