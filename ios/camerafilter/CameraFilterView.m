@@ -56,23 +56,49 @@
 - (void)didMoveToWindow {
   [super didMoveToWindow];
   if (self.window) {
-    [AVCaptureDevice
-        requestAccessForMediaType:AVMediaTypeVideo
-                completionHandler:^(BOOL cameraGranted) {
-                  [AVCaptureDevice
-                      requestAccessForMediaType:AVMediaTypeAudio
-                              completionHandler:^(BOOL audioGranted) {
-                                dispatch_async(self.sessionQueue, ^{
-                                  // Force audio session to PlayAndRecord so it isn't stuck in Playback mode from EditorScreen
-                                  [[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryPlayAndRecord
-                                                                   withOptions:AVAudioSessionCategoryOptionMixWithOthers | AVAudioSessionCategoryOptionDefaultToSpeaker
-                                                                         error:nil];
-                                  [[AVAudioSession sharedInstance] setActive:YES error:nil];
-                                  
-                                  [self.session startRunning];
-                                });
-                              }];
-                }];
+    AVAuthorizationStatus videoStatus = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo];
+    AVAuthorizationStatus audioStatus = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
+
+    void (^startSessionBlock)(void) = ^{
+      dispatch_async(self.sessionQueue, ^{
+        @try {
+          NSError *error = nil;
+          [[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryPlayAndRecord
+                                           withOptions:AVAudioSessionCategoryOptionMixWithOthers | AVAudioSessionCategoryOptionDefaultToSpeaker
+                                                 error:&error];
+          if (error) {
+            NSLog(@"[CameraFilterView] Failed to set audio category: %@", error.localizedDescription);
+          }
+          [[AVAudioSession sharedInstance] setActive:YES error:nil];
+        } @catch (NSException *exception) {
+          NSLog(@"[CameraFilterView] Exception setting audio session: %@", exception.reason);
+        }
+
+        if (self.videoInput == nil || self.session.inputs.count == 0) {
+          [self configureInputs];
+        }
+
+        if (!self.session.isRunning) {
+          [self.session startRunning];
+        }
+      });
+    };
+
+    if (videoStatus == AVAuthorizationStatusAuthorized && audioStatus == AVAuthorizationStatusAuthorized) {
+      startSessionBlock();
+    } else {
+      [AVCaptureDevice
+          requestAccessForMediaType:AVMediaTypeVideo
+                  completionHandler:^(BOOL cameraGranted) {
+                    [AVCaptureDevice
+                        requestAccessForMediaType:AVMediaTypeAudio
+                                completionHandler:^(BOOL audioGranted) {
+                                  if (cameraGranted && audioGranted) {
+                                    startSessionBlock();
+                                  }
+                                }];
+                  }];
+    }
   } else {
     dispatch_async(self.videoQueue, ^{
       if (self.isRecording && self.assetWriter) {
@@ -85,18 +111,23 @@
       }
     });
     dispatch_async(self.sessionQueue, ^{
-      [self.session stopRunning];
+      if (self.session.isRunning) {
+        [self.session stopRunning];
+      }
       for (AVCaptureInput *input in self.session.inputs) {
         [self.session removeInput:input];
       }
-      for (AVCaptureOutput *output in self.session.outputs) {
-        [self.session removeOutput:output];
-      }
+      self.videoInput = nil;
+      self.audioInput = nil;
       
       // Also reset audio session to ambient/playback so it doesn't hold recording priority
       dispatch_async(dispatch_get_main_queue(), ^{
-        [[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryPlayback error:nil];
-        [[AVAudioSession sharedInstance] setActive:NO error:nil];
+        @try {
+          [[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryPlayback error:nil];
+          [[AVAudioSession sharedInstance] setActive:NO error:nil];
+        } @catch (NSException *exception) {
+          NSLog(@"[CameraFilterView] Exception resetting audio session: %@", exception.reason);
+        }
       });
     });
   }

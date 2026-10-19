@@ -5,6 +5,7 @@ import {
   BackHandler,
   FlatList,
   Image,
+  Linking,
   Modal,
   PermissionsAndroid,
   Platform,
@@ -400,7 +401,14 @@ export function PickScreen({
         const ok = await requestMediaAccess();
         console.log('requestMediaAccess ok?', ok);
         if (!ok) {
-          Alert.alert('Permission needed', 'Allow photo access to continue.');
+          Alert.alert(
+            'Photo Permission Needed',
+            'Please allow access to your photos so you can select and edit photos or videos.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Open Settings', onPress: () => Linking.openSettings() },
+            ]
+          );
           return;
         }
         const fetchedAlbums = await listAlbums();
@@ -590,7 +598,14 @@ export function PickScreen({
           cameraGranted !== PermissionsAndroid.RESULTS.GRANTED ||
           audioGranted !== PermissionsAndroid.RESULTS.GRANTED
         ) {
-          Alert.alert('Permissions Required', 'Camera and Microphone permissions are required to use the custom camera.');
+          Alert.alert(
+            'Permissions Required',
+            'Camera and Microphone permissions are required to use the camera.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Open Settings', onPress: () => Linking.openSettings() },
+            ]
+          );
           return;
         }
       } catch (err) {
@@ -1003,24 +1018,7 @@ export function PickScreen({
 
 
 
-            {/* Rule of Thirds Grid Overlay */}
-            <View style={styles.cameraGridOverlay} pointerEvents="none">
-              <View style={styles.gridRow}>
-                <View style={styles.gridCell} />
-                <View style={[styles.gridCell, styles.gridCellMiddleCol]} />
-                <View style={styles.gridCell} />
-              </View>
-              <View style={[styles.gridRow, styles.gridRowMiddleRow]}>
-                <View style={styles.gridCell} />
-                <View style={[styles.gridCell, styles.gridCellMiddleCol]} />
-                <View style={styles.gridCell} />
-              </View>
-              <View style={styles.gridRow}>
-                <View style={styles.gridCell} />
-                <View style={[styles.gridCell, styles.gridCellMiddleCol]} />
-                <View style={styles.gridCell} />
-              </View>
-            </View>
+{/* Grid overlay removed to prevent horizontal line and top bar artifacts */}
 
             {/* Top Controls */}
             {!isRecording && (
@@ -1393,31 +1391,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000',
   },
-  cameraGridOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'space-between',
-    paddingVertical: 120,
-  },
-  gridRow: {
-    flex: 1,
-    flexDirection: 'row',
-  },
-  gridRowMiddleRow: {
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
-  },
-  gridCell: {
-    flex: 1,
-  },
-  gridCellMiddleCol: {
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
-  },
   cameraHeader: {
     position: 'absolute',
-    top: 40,
     left: 0,
     right: 0,
     flexDirection: 'row',
