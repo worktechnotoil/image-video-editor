@@ -75,7 +75,7 @@
         }
 
         if (self.videoInput == nil || self.session.inputs.count == 0) {
-          [self configureInputs];
+          [self configureInputsInternal];
         }
 
         if (!self.session.isRunning) {
@@ -137,6 +137,21 @@
   if (self.isRecording && self.assetWriter) {
     [self.assetWriter cancelWriting];
   }
+  AVCaptureSession *sess = self.session;
+  dispatch_queue_t queue = self.sessionQueue;
+  if (sess && queue) {
+    dispatch_async(queue, ^{
+      if (sess.isRunning) {
+        [sess stopRunning];
+      }
+      for (AVCaptureInput *input in sess.inputs) {
+        [sess removeInput:input];
+      }
+      for (AVCaptureOutput *output in sess.outputs) {
+        [sess removeOutput:output];
+      }
+    });
+  }
 }
 
 - (void)setFacing:(NSString *)facing {
@@ -152,61 +167,65 @@
   _filter = [filter copy];
 }
 
+- (void)configureInputsInternal {
+  [self.session beginConfiguration];
+  if (self.videoInput) {
+    [self.session removeInput:self.videoInput];
+    self.videoInput = nil;
+  }
+  if (self.audioInput) {
+    [self.session removeInput:self.audioInput];
+    self.audioInput = nil;
+  }
+
+  AVCaptureDevicePosition position = [self.facing isEqualToString:@"back"]
+                                         ? AVCaptureDevicePositionBack
+                                         : AVCaptureDevicePositionFront;
+  AVCaptureDevice *videoDevice = [AVCaptureDevice
+      defaultDeviceWithDeviceType:AVCaptureDeviceTypeBuiltInWideAngleCamera
+                        mediaType:AVMediaTypeVideo
+                         position:position];
+
+  if (videoDevice) {
+    NSError *error = nil;
+    self.videoInput = [AVCaptureDeviceInput deviceInputWithDevice:videoDevice
+                                                            error:&error];
+    if (self.videoInput && [self.session canAddInput:self.videoInput]) {
+      [self.session addInput:self.videoInput];
+      AVCaptureConnection *conn =
+          [self.videoOutput connectionWithMediaType:AVMediaTypeVideo];
+      if (conn.isVideoOrientationSupported) {
+        UIDeviceOrientation orientation = [[UIDevice currentDevice] orientation];
+        if (orientation == UIDeviceOrientationLandscapeLeft) {
+          conn.videoOrientation = AVCaptureVideoOrientationLandscapeRight;
+        } else if (orientation == UIDeviceOrientationLandscapeRight) {
+          conn.videoOrientation = AVCaptureVideoOrientationLandscapeLeft;
+        } else {
+          conn.videoOrientation = AVCaptureVideoOrientationPortrait;
+        }
+      }
+      if (conn.isVideoMirroringSupported) {
+        conn.videoMirrored = (position == AVCaptureDevicePositionFront);
+      }
+    }
+  }
+
+  AVCaptureDevice *audioDevice =
+      [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeAudio];
+  if (audioDevice) {
+    NSError *error = nil;
+    self.audioInput = [AVCaptureDeviceInput deviceInputWithDevice:audioDevice
+                                                            error:&error];
+    if (self.audioInput && [self.session canAddInput:self.audioInput]) {
+      [self.session addInput:self.audioInput];
+    }
+  }
+  [self.session commitConfiguration];
+}
+
 - (void)configureInputs {
   dispatch_async(self.sessionQueue, ^{
-    [self.session beginConfiguration];
-    if (self.videoInput) {
-      [self.session removeInput:self.videoInput];
-      self.videoInput = nil;
-    }
-    if (self.audioInput) {
-      [self.session removeInput:self.audioInput];
-      self.audioInput = nil;
-    }
-
-    AVCaptureDevicePosition position = [self.facing isEqualToString:@"back"]
-                                           ? AVCaptureDevicePositionBack
-                                           : AVCaptureDevicePositionFront;
-    AVCaptureDevice *videoDevice = [AVCaptureDevice
-        defaultDeviceWithDeviceType:AVCaptureDeviceTypeBuiltInWideAngleCamera
-                          mediaType:AVMediaTypeVideo
-                           position:position];
-
-    if (videoDevice) {
-      NSError *error = nil;
-      self.videoInput = [AVCaptureDeviceInput deviceInputWithDevice:videoDevice
-                                                              error:&error];
-      if (self.videoInput && [self.session canAddInput:self.videoInput]) {
-        [self.session addInput:self.videoInput];
-        AVCaptureConnection *conn =
-            [self.videoOutput connectionWithMediaType:AVMediaTypeVideo];
-        if (conn.isVideoOrientationSupported) {
-          UIDeviceOrientation orientation = [[UIDevice currentDevice] orientation];
-          if (orientation == UIDeviceOrientationLandscapeLeft) {
-            conn.videoOrientation = AVCaptureVideoOrientationLandscapeRight;
-          } else if (orientation == UIDeviceOrientationLandscapeRight) {
-            conn.videoOrientation = AVCaptureVideoOrientationLandscapeLeft;
-          } else {
-            conn.videoOrientation = AVCaptureVideoOrientationPortrait;
-          }
-        }
-        if (conn.isVideoMirroringSupported) {
-          conn.videoMirrored = (position == AVCaptureDevicePositionFront);
-        }
-      }
-    }
-
-    AVCaptureDevice *audioDevice =
-        [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeAudio];
-    if (audioDevice) {
-      NSError *error = nil;
-      self.audioInput = [AVCaptureDeviceInput deviceInputWithDevice:audioDevice
-                                                              error:&error];
-      if (self.audioInput && [self.session canAddInput:self.audioInput]) {
-        [self.session addInput:self.audioInput];
-      }
-    }
-    [self.session commitConfiguration];
+    [self configureInputsInternal];
   });
 }
 
