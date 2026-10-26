@@ -10,13 +10,21 @@ A high-performance, feature-rich React Native image and video editor. This libra
 * 📦 **Modular Export**: Triggers callbacks with local filesystem URIs suitable for server uploads.
 * 📱 **Multi-Select & Swiping**: Select up to 5 items simultaneously and edit them smoothly via horizontal swiping. UI state and trimming configurations perfectly sync across items.
 
-### Recent Updates (v0.1.18)
+### Recent Updates (v0.1.27)
+* **iOS Camera Session Reliability**: Completely overhauled iOS `CameraFilterView` lifecycle using per-instance dispatch queues. Resolves race conditions and intermittent black-screen freezes when opening/closing or flipping the camera.
+* **Independent Camera & Audio Startup**: Decoupled microphone access from the camera session initialization on iOS. The camera preview starts immediately upon camera permission without waiting on microphone prompts.
+* **Recording Resilience**: Fixed video recording cancellation when microphone access is muted or denied. Videos now record cleanly on iOS regardless of microphone permission state.
+* **Interruption Auto-Recovery**: Added automatic recovery from system interruptions (incoming calls, notifications, minimizing app) to restore camera previews smoothly.
+* **Permission Re-direction**: Added an informative native alert redirecting users directly to iOS Settings if camera permissions were previously denied.
+
+### Prior Updates (v0.1.18)
 * **Camera Orientation Fix**: Fixed camera preview and video capture orientation on both iOS and Android when the device is held in landscape mode.
 * **Text Overlay Enhancements**: Added `maxTextLength` prop to limit characters in the "Add Text" popup, complete with a live counter.
 * **Dark Mode Compliance**: The "Add Text" popup now always renders correctly with a premium dark mode design, independent of the device system theme.
 * **Performance & Stability**: Fixed fatal UI thread crashes when transitioning to the editor screen with empty overlay states.
 * **Native Overlays**: Improved native resolution of bundled React Native image assets for reliable photo frame rendering across all Android versions.
 * **FFmpeg Enhancements**: Optimised FFmpeg rendering pipelines for better memory usage and resolved codec dependency failures on Android.
+
 
 ---
 

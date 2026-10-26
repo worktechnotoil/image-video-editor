@@ -1,0 +1,12 @@
+CompileFlags:
+  Add:
+    - "-isysroot"
+    - "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk"
+    - "-target"
+    - "arm64-apple-ios15.1-simulator"
+    - "-fobjc-arc"
+    - "-I/Users/apple/Documents/Reactnative/library/@technotoil/image_videoEditor/ios/camerafilter"
+    - "-I/Users/apple/Documents/Reactnative/library/@technotoil/image_videoEditor/ios"
+    - "-I/Users/apple/Documents/Reactnative/library/@technotoil/image_videoEditor/example/ios/Pods/Headers/Public"
+    - "-I/Users/apple/Documents/Reactnative/library/@technotoil/image_videoEditor/example/ios/Pods/Headers/Public/React-Core"
+    - "-I/Users/apple/Documents/Reactnative/library/@technotoil/image_videoEditor/example/ios/Pods/Headers/Public/Yoga"

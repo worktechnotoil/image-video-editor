@@ -114,18 +114,39 @@
     [super didMoveToWindow];
     if (self.window) {
         NSLog(@"[RNCameraView] View moved to window, requesting permissions");
-        [AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo completionHandler:^(BOOL cameraGranted) {
-            [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio completionHandler:^(BOOL audioGranted) {
-                dispatch_async(self.sessionQueue, ^{
-                    NSLog(@"[RNCameraView] Starting session running");
+        AVAuthorizationStatus videoStatus = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo];
+        void (^startSessionBlock)(void) = ^{
+            dispatch_async(self.sessionQueue, ^{
+                NSLog(@"[RNCameraView] Starting session running");
+                if (!self.session.isRunning) {
                     [self.session startRunning];
-                });
+                }
+            });
+        };
+
+        if (videoStatus == AVAuthorizationStatusAuthorized) {
+            startSessionBlock();
+        } else if (videoStatus == AVAuthorizationStatusNotDetermined) {
+            [AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo completionHandler:^(BOOL cameraGranted) {
+                if (cameraGranted) {
+                    startSessionBlock();
+                }
             }];
-        }];
+        }
+        // Audio permission requested separately so video is never blocked
+        if ([AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio] == AVAuthorizationStatusNotDetermined) {
+            [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio completionHandler:^(BOOL audioGranted) {
+                if (audioGranted) {
+                    [self configureInputs];
+                }
+            }];
+        }
     } else {
         dispatch_async(self.sessionQueue, ^{
             NSLog(@"[RNCameraView] Stopping session running");
-            [self.session stopRunning];
+            if (self.session.isRunning) {
+                [self.session stopRunning];
+            }
         });
     }
 }

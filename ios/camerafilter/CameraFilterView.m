@@ -14,13 +14,8 @@
 
     self.faceDetectionRequest = [[VNDetectFaceLandmarksRequest alloc] init];
 
-    static dispatch_queue_t sharedSessionQueue;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-      sharedSessionQueue = dispatch_queue_create("com.videoeditor.sessionQueue",
-                                                 DISPATCH_QUEUE_SERIAL);
-    });
-    self.sessionQueue = sharedSessionQueue;
+    self.sessionQueue = dispatch_queue_create("com.videoeditor.cameraSessionQueue",
+                                              DISPATCH_QUEUE_SERIAL);
 
     self.videoQueue = dispatch_queue_create("com.videoeditor.videoQueue",
                                             DISPATCH_QUEUE_SERIAL);
@@ -48,19 +43,52 @@
       [self.session commitConfiguration];
     });
 
+#if TARGET_OS_IOS
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(handleAppDidBecomeActive:)
+                                                 name:UIApplicationDidBecomeActiveNotification
+                                               object:nil];
+#endif
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(handleSessionInterruptionEnded:)
+                                                 name:AVCaptureSessionInterruptionEndedNotification
+                                               object:self.session];
+
     [self configureInputs];
   }
   return self;
+}
+
+#if TARGET_OS_IOS
+- (void)handleAppDidBecomeActive:(NSNotification *)note {
+  if (self.window && !self.session.isRunning) {
+    dispatch_async(self.sessionQueue, ^{
+      if (!self.session.isRunning) {
+        [self.session startRunning];
+      }
+    });
+  }
+}
+#endif
+
+- (void)handleSessionInterruptionEnded:(NSNotification *)note {
+  if (self.window && !self.session.isRunning) {
+    dispatch_async(self.sessionQueue, ^{
+      if (!self.session.isRunning) {
+        [self.session startRunning];
+      }
+    });
+  }
 }
 
 - (void)didMoveToWindow {
   [super didMoveToWindow];
   if (self.window) {
     AVAuthorizationStatus videoStatus = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo];
-    AVAuthorizationStatus audioStatus = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
 
     void (^startSessionBlock)(void) = ^{
       dispatch_async(self.sessionQueue, ^{
+#if TARGET_OS_IOS
         @try {
           NSError *error = nil;
           [[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryPlayAndRecord
@@ -73,6 +101,7 @@
         } @catch (NSException *exception) {
           NSLog(@"[CameraFilterView] Exception setting audio session: %@", exception.reason);
         }
+#endif
 
         if (self.videoInput == nil || self.session.inputs.count == 0) {
           [self configureInputsInternal];
@@ -84,20 +113,56 @@
       });
     };
 
-    if (videoStatus == AVAuthorizationStatusAuthorized && audioStatus == AVAuthorizationStatusAuthorized) {
+    if (videoStatus == AVAuthorizationStatusAuthorized) {
       startSessionBlock();
-    } else {
-      [AVCaptureDevice
-          requestAccessForMediaType:AVMediaTypeVideo
-                  completionHandler:^(BOOL cameraGranted) {
-                    [AVCaptureDevice
-                        requestAccessForMediaType:AVMediaTypeAudio
-                                completionHandler:^(BOOL audioGranted) {
-                                  if (cameraGranted && audioGranted) {
-                                    startSessionBlock();
-                                  }
-                                }];
-                  }];
+      // Prompt for audio in background if not yet requested
+      if ([AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio] == AVAuthorizationStatusNotDetermined) {
+        [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio completionHandler:^(BOOL granted) {
+          if (granted) {
+            [self configureInputs];
+          }
+        }];
+      }
+    } else if (videoStatus == AVAuthorizationStatusNotDetermined) {
+      [AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo completionHandler:^(BOOL cameraGranted) {
+        if (cameraGranted) {
+          startSessionBlock();
+          if ([AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio] == AVAuthorizationStatusNotDetermined) {
+            [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio completionHandler:^(BOOL granted) {
+              if (granted) {
+                [self configureInputs];
+              }
+            }];
+          }
+        }
+      }];
+    } else if (videoStatus == AVAuthorizationStatusDenied || videoStatus == AVAuthorizationStatusRestricted) {
+      dispatch_async(dispatch_get_main_queue(), ^{
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Camera Permission Required"
+                                                                       message:@"Camera access is required to use this feature. Please allow camera access in Settings."
+                                                                preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+        [alert addAction:[UIAlertAction actionWithTitle:@"Settings" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+          NSURL *url = [NSURL URLWithString:UIApplicationOpenSettingsURLString];
+          if ([[UIApplication sharedApplication] canOpenURL:url]) {
+            [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
+          }
+        }]];
+        UIWindow *window = self.window;
+        if (!window) {
+          for (UIWindowScene *scene in [UIApplication sharedApplication].connectedScenes) {
+            if ([scene isKindOfClass:[UIWindowScene class]] && scene.activationState == UISceneActivationStateForegroundActive) {
+              window = scene.windows.firstObject;
+              break;
+            }
+          }
+        }
+        UIViewController *topController = window.rootViewController;
+        while (topController.presentedViewController) {
+          topController = topController.presentedViewController;
+        }
+        [topController presentViewController:alert animated:YES completion:nil];
+      });
     }
   } else {
     dispatch_async(self.videoQueue, ^{
@@ -121,6 +186,7 @@
       self.audioInput = nil;
       
       // Also reset audio session to ambient/playback so it doesn't hold recording priority
+#if TARGET_OS_IOS
       dispatch_async(dispatch_get_main_queue(), ^{
         @try {
           [[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryPlayback error:nil];
@@ -129,11 +195,13 @@
           NSLog(@"[CameraFilterView] Exception resetting audio session: %@", exception.reason);
         }
       });
+#endif
     });
   }
 }
 
 - (void)dealloc {
+  [[NSNotificationCenter defaultCenter] removeObserver:self];
   if (self.isRecording && self.assetWriter) {
     [self.assetWriter cancelWriting];
   }
@@ -185,6 +253,18 @@
       defaultDeviceWithDeviceType:AVCaptureDeviceTypeBuiltInWideAngleCamera
                         mediaType:AVMediaTypeVideo
                          position:position];
+  if (!videoDevice) {
+    if (@available(iOS 10.0, *)) {
+      AVCaptureDeviceDiscoverySession *discovery = [AVCaptureDeviceDiscoverySession
+          discoverySessionWithDeviceTypes:@[AVCaptureDeviceTypeBuiltInWideAngleCamera, AVCaptureDeviceTypeBuiltInDualCamera]
+                                mediaType:AVMediaTypeVideo
+                                 position:position];
+      videoDevice = discovery.devices.firstObject;
+    }
+  }
+  if (!videoDevice) {
+    videoDevice = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
+  }
 
   if (videoDevice) {
     NSError *error = nil;
@@ -4154,20 +4234,23 @@
           (id)kCVPixelBufferPixelFormatTypeKey : @(kCVPixelFormatType_32BGRA)
         }];
 
-    NSDictionary *audioSettings = @{
-      AVFormatIDKey : @(kAudioFormatMPEG4AAC),
-      AVNumberOfChannelsKey : @1,
-      AVSampleRateKey : @44100.0,
-      AVEncoderBitRateKey : @64000
-    };
-    self.audioWriterInput =
-        [[AVAssetWriterInput alloc] initWithMediaType:AVMediaTypeAudio
-                                       outputSettings:audioSettings];
-    self.audioWriterInput.expectsMediaDataInRealTime = YES;
+    self.audioWriterInput = nil;
+    if (self.audioInput != nil) {
+      NSDictionary *audioSettings = @{
+        AVFormatIDKey : @(kAudioFormatMPEG4AAC),
+        AVNumberOfChannelsKey : @1,
+        AVSampleRateKey : @44100.0,
+        AVEncoderBitRateKey : @64000
+      };
+      self.audioWriterInput =
+          [[AVAssetWriterInput alloc] initWithMediaType:AVMediaTypeAudio
+                                         outputSettings:audioSettings];
+      self.audioWriterInput.expectsMediaDataInRealTime = YES;
+    }
 
     if ([self.assetWriter canAddInput:self.videoWriterInput])
       [self.assetWriter addInput:self.videoWriterInput];
-    if ([self.assetWriter canAddInput:self.audioWriterInput])
+    if (self.audioWriterInput && [self.assetWriter canAddInput:self.audioWriterInput])
       [self.assetWriter addInput:self.audioWriterInput];
 
     self.sessionStartTime = kCMTimeInvalid;
@@ -4188,7 +4271,8 @@
     }
     self.isRecording = NO;
 
-    if (CMTIME_IS_INVALID(self.sessionStartTime) || !self.hasWrittenVideo || !self.hasWrittenAudio) {
+    BOOL audioRequired = (self.audioWriterInput != nil && self.audioInput != nil);
+    if (CMTIME_IS_INVALID(self.sessionStartTime) || !self.hasWrittenVideo || (audioRequired && !self.hasWrittenAudio)) {
       [self.assetWriter cancelWriting];
       resolve(@{
         @"uri" : [NSURL fileURLWithPath:self.videoOutputPath].absoluteString,
@@ -4204,7 +4288,9 @@
     }
 
     [self.videoWriterInput markAsFinished];
-    [self.audioWriterInput markAsFinished];
+    if (self.audioWriterInput) {
+      [self.audioWriterInput markAsFinished];
+    }
 
     AVAssetWriter *writerToStop = self.assetWriter;
     [writerToStop finishWritingWithCompletionHandler:^{

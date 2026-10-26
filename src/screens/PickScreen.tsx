@@ -19,7 +19,6 @@ import {
 import { Icon as Ionicons } from '../components/Icon';
 import ImagePicker from 'react-native-image-crop-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CameraView, CameraViewRef } from '../native/CameraView';
 import { Album, exportAsset, listAlbums, listMedia, requestMediaAccess } from '../native/MediaLibrary';
 import { VideoPreview } from '../native/VideoPreview';
 import type { MediaItem } from '../types';
