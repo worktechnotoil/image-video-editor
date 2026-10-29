@@ -2,6 +2,15 @@
 
 @implementation CameraFilterView
 
+static dispatch_queue_t getSharedCameraSessionQueue(void) {
+  static dispatch_queue_t sQueue;
+  static dispatch_once_t onceToken;
+  dispatch_once(&onceToken, ^{
+    sQueue = dispatch_queue_create("com.videoeditor.sharedCameraSessionQueue", DISPATCH_QUEUE_SERIAL);
+  });
+  return sQueue;
+}
+
 - (instancetype)initWithFrame:(CGRect)frame {
   if (self = [super initWithFrame:frame]) {
     self.backgroundColor = [UIColor blackColor];
@@ -14,47 +23,13 @@
 
     self.faceDetectionRequest = [[VNDetectFaceLandmarksRequest alloc] init];
 
-    self.sessionQueue = dispatch_queue_create("com.videoeditor.cameraSessionQueue",
-                                              DISPATCH_QUEUE_SERIAL);
+    // Shared serial session queue ensures sequential execution across views
+    self.sessionQueue = getSharedCameraSessionQueue();
 
     self.videoQueue = dispatch_queue_create("com.videoeditor.videoQueue",
                                             DISPATCH_QUEUE_SERIAL);
 
-    self.session = [[AVCaptureSession alloc] init];
-    self.session.sessionPreset = AVCaptureSessionPreset1280x720;
-
-    self.videoOutput = [[AVCaptureVideoDataOutput alloc] init];
-    self.videoOutput.alwaysDiscardsLateVideoFrames = YES;
-    self.videoOutput.videoSettings =
-        @{(id)kCVPixelBufferPixelFormatTypeKey : @(kCVPixelFormatType_32BGRA)};
-    [self.videoOutput setSampleBufferDelegate:self queue:self.videoQueue];
-
-    self.audioOutput = [[AVCaptureAudioDataOutput alloc] init];
-    [self.audioOutput setSampleBufferDelegate:self queue:self.videoQueue];
-
-    dispatch_async(self.sessionQueue, ^{
-      [self.session beginConfiguration];
-      if ([self.session canAddOutput:self.videoOutput]) {
-        [self.session addOutput:self.videoOutput];
-      }
-      if ([self.session canAddOutput:self.audioOutput]) {
-        [self.session addOutput:self.audioOutput];
-      }
-      [self.session commitConfiguration];
-    });
-
-#if TARGET_OS_IOS
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(handleAppDidBecomeActive:)
-                                                 name:UIApplicationDidBecomeActiveNotification
-                                               object:nil];
-#endif
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(handleSessionInterruptionEnded:)
-                                                 name:AVCaptureSessionInterruptionEndedNotification
-                                               object:self.session];
-
-    [self configureInputs];
+    // Pure lightweight init: NO premature session/output allocation or queue dispatch
   }
   return self;
 }
@@ -63,7 +38,7 @@
 - (void)handleAppDidBecomeActive:(NSNotification *)note {
   if (self.window && !self.session.isRunning) {
     dispatch_async(self.sessionQueue, ^{
-      if (!self.session.isRunning) {
+      if (self.window && !self.session.isRunning) {
         [self.session startRunning];
       }
     });
@@ -74,11 +49,24 @@
 - (void)handleSessionInterruptionEnded:(NSNotification *)note {
   if (self.window && !self.session.isRunning) {
     dispatch_async(self.sessionQueue, ^{
-      if (!self.session.isRunning) {
+      if (self.window && !self.session.isRunning) {
         [self.session startRunning];
       }
     });
   }
+}
+
+- (void)handleSessionRuntimeError:(NSNotification *)note {
+  NSError *error = note.userInfo[AVCaptureSessionErrorKey];
+  NSLog(@"[CameraFilterView] Session runtime error: %@", error.localizedDescription);
+  dispatch_async(self.sessionQueue, ^{
+    if (self.window && !self.session.isRunning) {
+      if (self.videoInput == nil || self.session.inputs.count == 0) {
+        [self configureInputsInternal];
+      }
+      [self.session startRunning];
+    }
+  });
 }
 
 - (void)didMoveToWindow {
@@ -88,6 +76,10 @@
 
     void (^startSessionBlock)(void) = ^{
       dispatch_async(self.sessionQueue, ^{
+        if (!self.window) {
+          return;
+        }
+
 #if TARGET_OS_IOS
         @try {
           NSError *error = nil;
@@ -103,11 +95,40 @@
         }
 #endif
 
+        // 1. Lazy instantiate session and outputs if nil
+        if (self.session == nil) {
+          self.session = [[AVCaptureSession alloc] init];
+          self.session.sessionPreset = AVCaptureSessionPreset1280x720;
+
+          self.videoOutput = [[AVCaptureVideoDataOutput alloc] init];
+          self.videoOutput.alwaysDiscardsLateVideoFrames = YES;
+          self.videoOutput.videoSettings =
+              @{(id)kCVPixelBufferPixelFormatTypeKey : @(kCVPixelFormatType_32BGRA)};
+
+          self.audioOutput = [[AVCaptureAudioDataOutput alloc] init];
+
+          [self.videoOutput setSampleBufferDelegate:self queue:self.videoQueue];
+          [self.audioOutput setSampleBufferDelegate:self queue:self.videoQueue];
+
+          [self.session beginConfiguration];
+          if ([self.session canAddOutput:self.videoOutput]) {
+            [self.session addOutput:self.videoOutput];
+          }
+          if ([self.session canAddOutput:self.audioOutput]) {
+            [self.session addOutput:self.audioOutput];
+          }
+          [self.session commitConfiguration];
+        } else {
+          // Re-attach sample buffer delegates if session exists
+          [self.videoOutput setSampleBufferDelegate:self queue:self.videoQueue];
+          [self.audioOutput setSampleBufferDelegate:self queue:self.videoQueue];
+        }
+
         if (self.videoInput == nil || self.session.inputs.count == 0) {
           [self configureInputsInternal];
         }
 
-        if (!self.session.isRunning) {
+        if (self.window && !self.session.isRunning) {
           [self.session startRunning];
         }
       });
@@ -165,6 +186,15 @@
       });
     }
   } else {
+    // Window is nil (screen closed/unmounted)
+    // Clear frozen frame from layer immediately
+    self.layer.contents = nil;
+
+    // Immediately detach sample buffer delegates so NO new frames or vision tasks are processed
+    [self.videoOutput setSampleBufferDelegate:nil queue:NULL];
+    [self.audioOutput setSampleBufferDelegate:nil queue:NULL];
+
+    // 1. Instantly stop asset writer if recording
     dispatch_async(self.videoQueue, ^{
       if (self.isRecording && self.assetWriter) {
         self.isRecording = NO;
@@ -175,28 +205,51 @@
         self.pixelBufferAdaptor = nil;
       }
     });
-    dispatch_async(self.sessionQueue, ^{
-      if (self.session.isRunning) {
-        [self.session stopRunning];
+
+    // 2. Tear down session inputs/outputs on shared session queue synchronously
+    AVCaptureVideoDataOutput *vOut = self.videoOutput;
+    AVCaptureAudioDataOutput *aOut = self.audioOutput;
+    AVCaptureSession *sess = self.session;
+
+    dispatch_block_t teardownBlock = ^{
+      [vOut setSampleBufferDelegate:nil queue:NULL];
+      [aOut setSampleBufferDelegate:nil queue:NULL];
+
+      if (sess.isRunning) {
+        [sess stopRunning];
       }
-      for (AVCaptureInput *input in self.session.inputs) {
-        [self.session removeInput:input];
+
+      for (AVCaptureInput *input in [sess.inputs copy]) {
+        [sess removeInput:input];
+      }
+      for (AVCaptureOutput *output in [sess.outputs copy]) {
+        [sess removeOutput:output];
       }
       self.videoInput = nil;
       self.audioInput = nil;
-      
-      // Also reset audio session to ambient/playback so it doesn't hold recording priority
+      self.videoOutput = nil;
+      self.audioOutput = nil;
+      self.session = nil;
+    };
+
+    // Synchronously execute teardown so old session is guaranteed 100% dead before next view mounts
+    if (dispatch_queue_get_label(DISPATCH_CURRENT_QUEUE_LABEL) == dispatch_queue_get_label(self.sessionQueue)) {
+      teardownBlock();
+    } else {
+      dispatch_sync(self.sessionQueue, teardownBlock);
+    }
+
+    // Reset audio session to ambient/playback
 #if TARGET_OS_IOS
-      dispatch_async(dispatch_get_main_queue(), ^{
-        @try {
-          [[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryPlayback error:nil];
-          [[AVAudioSession sharedInstance] setActive:NO error:nil];
-        } @catch (NSException *exception) {
-          NSLog(@"[CameraFilterView] Exception resetting audio session: %@", exception.reason);
-        }
-      });
-#endif
+    dispatch_async(dispatch_get_main_queue(), ^{
+      @try {
+        [[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryPlayback error:nil];
+        [[AVAudioSession sharedInstance] setActive:NO error:nil];
+      } @catch (NSException *exception) {
+        NSLog(@"[CameraFilterView] Exception resetting audio session: %@", exception.reason);
+      }
     });
+#endif
   }
 }
 
@@ -206,16 +259,20 @@
     [self.assetWriter cancelWriting];
   }
   AVCaptureSession *sess = self.session;
+  AVCaptureVideoDataOutput *vOut = self.videoOutput;
+  AVCaptureAudioDataOutput *aOut = self.audioOutput;
   dispatch_queue_t queue = self.sessionQueue;
   if (sess && queue) {
     dispatch_async(queue, ^{
+      [vOut setSampleBufferDelegate:nil queue:NULL];
+      [aOut setSampleBufferDelegate:nil queue:NULL];
       if (sess.isRunning) {
         [sess stopRunning];
       }
-      for (AVCaptureInput *input in sess.inputs) {
+      for (AVCaptureInput *input in [sess.inputs copy]) {
         [sess removeInput:input];
       }
-      for (AVCaptureOutput *output in sess.outputs) {
+      for (AVCaptureOutput *output in [sess.outputs copy]) {
         [sess removeOutput:output];
       }
     });
@@ -4090,7 +4147,9 @@
 
     CGImageRetain(finalImage);
     dispatch_async(dispatch_get_main_queue(), ^{
-      self.layer.contents = (__bridge id)finalImage;
+      if (self.window) {
+        self.layer.contents = (__bridge id)finalImage;
+      }
       CGImageRelease(finalImage);
     });
 

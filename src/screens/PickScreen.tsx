@@ -567,7 +567,18 @@ export function PickScreen({
     }
   };
 
+  const lastCameraCloseTimeRef = useRef(0);
+
+  const handleCloseCustomCamera = () => {
+    lastCameraCloseTimeRef.current = Date.now();
+    setShowCustomCamera(false);
+  };
+
   const handleOpenCamera = async () => {
+    // Prevent re-opening if camera was closed less than 350ms ago (hardware teardown debounce)
+    if (Date.now() - lastCameraCloseTimeRef.current < 350) {
+      return;
+    }
     setVideoPaused(true);
     if (Platform.OS === 'android') {
       try {
@@ -1022,7 +1033,7 @@ export function PickScreen({
             {/* Top Controls */}
             {!isRecording && (
               <View style={[styles.cameraHeader, { top: Math.max(insets.top, 16) }]}>
-                <Pressable style={styles.cameraCloseBtn} onPress={() => setShowCustomCamera(false)}>
+                <Pressable style={styles.cameraCloseBtn} onPress={handleCloseCustomCamera}>
                   <Ionicons name="close" size={22} color="#fff" />
                 </Pressable>
 
@@ -1062,7 +1073,7 @@ export function PickScreen({
                 <Pressable
                   style={styles.cameraGalleryPreview}
                   pointerEvents="auto"
-                  onPress={() => setShowCustomCamera(false)}
+                  onPress={handleCloseCustomCamera}
                 >
                   {library.length > 1 && library[1].thumbnailUri ? (
                     <Image source={{ uri: library[1].thumbnailUri }} style={styles.cameraGalleryThumb} />
