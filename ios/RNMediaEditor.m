@@ -620,11 +620,16 @@ RCT_REMAP_METHOD(trimVideo,
           UIImage *overlayImg = UIGraphicsGetImageFromCurrentImageContext();
           UIGraphicsEndImageContext();
           if (overlayImg) {
-              textOverlayCI = [[CIImage alloc] initWithImage:overlayImg];
-              // UIImage (top-left) to CIImage (bottom-left) conversion requires vertical flip
-              // to maintain the correct visual position for the video compositor.
-              textOverlayCI = [textOverlayCI imageByApplyingTransform:CGAffineTransformMakeScale(1, -1)];
-              textOverlayCI = [textOverlayCI imageByApplyingTransform:CGAffineTransformMakeTranslation(0, targetSize.height)];
+              // Convert UIImage to PNG data and then to CIImage to ensure a clean, standard bitmap
+              // with zero orientation ambiguity that renders upright in Core Image.
+              NSData *pngData = UIImagePNGRepresentation(overlayImg);
+              if (pngData) {
+                  CIImage *rawCI = [CIImage imageWithData:pngData];
+                  // Core Image inverts Y compared to PNG bitmap: flip Y and translate into visible canvas
+                  CGAffineTransform t = CGAffineTransformMakeScale(1.0, -1.0);
+                  t = CGAffineTransformTranslate(t, 0, -targetSize.height);
+                  textOverlayCI = [rawCI imageByApplyingTransform:t];
+              }
           }
       }
   }

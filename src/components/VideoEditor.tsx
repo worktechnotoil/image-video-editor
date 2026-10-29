@@ -111,7 +111,7 @@ export default function VideoEditor({
 
   return (
     <SafeAreaProvider>
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#0b0f1a' }} edges={['top', 'bottom', 'left', 'right']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#0b0f1a' }} edges={['left', 'right']}>
         <StatusBar
           barStyle="light-content"
           backgroundColor="transparent"

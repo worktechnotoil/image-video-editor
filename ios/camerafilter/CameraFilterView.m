@@ -75,8 +75,10 @@ static dispatch_queue_t getSharedCameraSessionQueue(void) {
     AVAuthorizationStatus videoStatus = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo];
 
     void (^startSessionBlock)(void) = ^{
+      __weak typeof(self) weakSelf = self;
       dispatch_async(self.sessionQueue, ^{
-        if (!self.window) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) {
           return;
         }
 
@@ -96,40 +98,41 @@ static dispatch_queue_t getSharedCameraSessionQueue(void) {
 #endif
 
         // 1. Lazy instantiate session and outputs if nil
-        if (self.session == nil) {
-          self.session = [[AVCaptureSession alloc] init];
-          self.session.sessionPreset = AVCaptureSessionPreset1280x720;
+        if (strongSelf.session == nil) {
+          strongSelf.session = [[AVCaptureSession alloc] init];
+          strongSelf.session.sessionPreset = AVCaptureSessionPreset1280x720;
 
-          self.videoOutput = [[AVCaptureVideoDataOutput alloc] init];
-          self.videoOutput.alwaysDiscardsLateVideoFrames = YES;
-          self.videoOutput.videoSettings =
+          strongSelf.videoOutput = [[AVCaptureVideoDataOutput alloc] init];
+          strongSelf.videoOutput.alwaysDiscardsLateVideoFrames = YES;
+          strongSelf.videoOutput.videoSettings =
               @{(id)kCVPixelBufferPixelFormatTypeKey : @(kCVPixelFormatType_32BGRA)};
 
-          self.audioOutput = [[AVCaptureAudioDataOutput alloc] init];
+          strongSelf.audioOutput = [[AVCaptureAudioDataOutput alloc] init];
 
-          [self.videoOutput setSampleBufferDelegate:self queue:self.videoQueue];
-          [self.audioOutput setSampleBufferDelegate:self queue:self.videoQueue];
+          [strongSelf.videoOutput setSampleBufferDelegate:strongSelf queue:strongSelf.videoQueue];
+          [strongSelf.audioOutput setSampleBufferDelegate:strongSelf queue:strongSelf.videoQueue];
 
-          [self.session beginConfiguration];
-          if ([self.session canAddOutput:self.videoOutput]) {
-            [self.session addOutput:self.videoOutput];
+          [strongSelf.session beginConfiguration];
+          if ([strongSelf.session canAddOutput:strongSelf.videoOutput]) {
+            [strongSelf.session addOutput:strongSelf.videoOutput];
           }
-          if ([self.session canAddOutput:self.audioOutput]) {
-            [self.session addOutput:self.audioOutput];
+          if ([strongSelf.session canAddOutput:strongSelf.audioOutput]) {
+            [strongSelf.session addOutput:strongSelf.audioOutput];
           }
-          [self.session commitConfiguration];
+          [strongSelf.session commitConfiguration];
         } else {
           // Re-attach sample buffer delegates if session exists
-          [self.videoOutput setSampleBufferDelegate:self queue:self.videoQueue];
-          [self.audioOutput setSampleBufferDelegate:self queue:self.videoQueue];
+          [strongSelf.videoOutput setSampleBufferDelegate:strongSelf queue:strongSelf.videoQueue];
+          [strongSelf.audioOutput setSampleBufferDelegate:strongSelf queue:strongSelf.videoQueue];
         }
 
-        if (self.videoInput == nil || self.session.inputs.count == 0) {
-          [self configureInputsInternal];
+        if (strongSelf.videoInput == nil || strongSelf.session.inputs.count == 0) {
+          [strongSelf configureInputsInternal];
         }
 
-        if (self.window && !self.session.isRunning) {
-          [self.session startRunning];
+        if (!strongSelf.session.isRunning) {
+          [strongSelf.session startRunning];
+          NSLog(@"[CameraFilterView] Capture session started successfully");
         }
       });
     };
@@ -206,12 +209,12 @@ static dispatch_queue_t getSharedCameraSessionQueue(void) {
       }
     });
 
-    // 2. Tear down session inputs/outputs on shared session queue synchronously
+    // 2. Tear down session inputs/outputs on shared session queue asynchronously
     AVCaptureVideoDataOutput *vOut = self.videoOutput;
     AVCaptureAudioDataOutput *aOut = self.audioOutput;
     AVCaptureSession *sess = self.session;
 
-    dispatch_block_t teardownBlock = ^{
+    dispatch_async(self.sessionQueue, ^{
       [vOut setSampleBufferDelegate:nil queue:NULL];
       [aOut setSampleBufferDelegate:nil queue:NULL];
 
@@ -230,14 +233,7 @@ static dispatch_queue_t getSharedCameraSessionQueue(void) {
       self.videoOutput = nil;
       self.audioOutput = nil;
       self.session = nil;
-    };
-
-    // Synchronously execute teardown so old session is guaranteed 100% dead before next view mounts
-    if (dispatch_queue_get_label(DISPATCH_CURRENT_QUEUE_LABEL) == dispatch_queue_get_label(self.sessionQueue)) {
-      teardownBlock();
-    } else {
-      dispatch_sync(self.sessionQueue, teardownBlock);
-    }
+    });
 
     // Reset audio session to ambient/playback
 #if TARGET_OS_IOS

@@ -5,6 +5,9 @@ require Pod::Executable.execute_command('node', ['-p',
     {paths: [process.argv[1]]},
   )', __dir__]).strip
 
+# Disable buggy prebuilt React Native core binary that lacks Sealable/DebugStringConvertible symbols
+ENV['RCT_USE_PREBUILT_RNCORE'] = '0'
+
 platform :ios, min_ios_version_supported
 prepare_react_native_project!
 

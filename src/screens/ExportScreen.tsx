@@ -9,7 +9,7 @@ import {
   Dimensions,
   Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { VideoPreview } from '../native/VideoPreview';
 import type { MediaItem } from '../types';
 
@@ -48,6 +48,7 @@ interface ExportScreenProps {
 }
 
 export function ExportScreen({ editedMedia, onHome, onReEdit }: ExportScreenProps) {
+  const insets = useSafeAreaInsets();
   const mediaList = useMemo(() => Object.values(editedMedia), [editedMedia]);
   const [selectedId, setSelectedId] = useState<string>(mediaList[0]?.id || '');
   
@@ -81,7 +82,7 @@ export function ExportScreen({ editedMedia, onHome, onReEdit }: ExportScreenProp
     <View style={styles.container}>
       <View style={styles.safeArea}>
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top, height: 56 + insets.top }]}>
           <Pressable onPress={onHome} style={styles.headerBtn}>
             <HomeIcon />
           </Pressable>
@@ -129,7 +130,7 @@ export function ExportScreen({ editedMedia, onHome, onReEdit }: ExportScreenProp
         </View>
 
         {/* Bottom Actions */}
-        <View style={styles.footer}>
+        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom + 12, 20) }]}>
           <Pressable 
             style={styles.reEditBtn} 
             onPress={() => selectedItem && onReEdit(selectedItem)}

@@ -2421,7 +2421,7 @@ export function EditorScreen({
 
   const videoAspect = typeof cropRatio === 'number' ? cropRatio : (dimensions.width / (dimensions.height || 1));
 
-  const carouselHeight = showMusicModal ? 280 : 380;
+  const carouselHeight = showMusicModal ? Math.min(260, SCREEN_HEIGHT * 0.3) : Math.min(340, Math.max(260, SCREEN_HEIGHT * 0.38));
 
   mutableCallbacks.current.save = saveEditsForIndex;
   mutableCallbacks.current.load = loadEditsForIndex;
@@ -2908,7 +2908,7 @@ export function EditorScreen({
             )}
 
             {/* Bottom Toolbar — 6 working tools */}
-            <View style={styles.bottomToolBarContainer} pointerEvents={saving ? 'none' : 'auto'}>
+            <View style={[styles.bottomToolBarContainer, { paddingBottom: Math.max(insets.bottom, 12) }]} pointerEvents={saving ? 'none' : 'auto'}>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -3050,7 +3050,7 @@ export function EditorScreen({
             </View>
 
             {/* Fullscreen Bottom Overlay Container */}
-            <View style={styles.fullscreenBottomContainer}>
+            <View style={[styles.fullscreenBottomContainer, { paddingBottom: Math.max(insets.bottom + 8, 20) }]}>
               {/* Bottom Toolbar */}
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.toolButtonsRow, { flexGrow: 1 }]}>
                 {resolvedMusicList.length > 0 && (
@@ -3134,7 +3134,7 @@ export function EditorScreen({
           </View>
 
           <View style={styles.content}>
-            <View style={{ height: carouselHeight, marginVertical: 12 }}>
+            <View style={{ height: carouselHeight, marginTop: 6, marginBottom: 8 }}>
               <FlatList
                 ref={flatListRef}
                 data={items}
@@ -3491,7 +3491,7 @@ export function EditorScreen({
             </View>
 
             {/* Tools row and bottom navigation controls */}
-            <View style={styles.bottomToolBarContainer}>
+            <View style={[styles.bottomToolBarContainer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.toolButtonsRow, { flexGrow: 1 }]}>
                 {resolvedMusicList.length > 0 && (
                   <Pressable style={[styles.toolButton, showMusicModal && styles.toolButtonActive]} onPress={() => setShowMusicModal(true)}>
@@ -4388,7 +4388,7 @@ const styles = StyleSheet.create({
   playPauseText: { color: '#fff', fontSize: 24, marginLeft: 4 },
   editorPanel: { flex: 1, justifyContent: 'center' },
   panelInner: { paddingHorizontal: 16 },
-  panelTitle: { color: '#999', fontSize: 12, fontWeight: '700', marginBottom: 16, textTransform: 'uppercase' },
+  panelTitle: { color: '#999', fontSize: 11, fontWeight: '700', marginBottom: 8, textTransform: 'uppercase' },
   bottomNav: {
     height: 80,
     borderTopWidth: 0.5,
@@ -4472,11 +4472,11 @@ const styles = StyleSheet.create({
   },
 
   adjustItem: {
-    width: 100,
+    width: 90,
     alignItems: 'center',
-    marginRight: 16,
+    marginRight: 12,
   },
-  adjustLabel: { color: '#999', fontSize: 12, marginBottom: 12 },
+  adjustLabel: { color: '#999', fontSize: 11, marginBottom: 8 },
   adjustCircle: {
     width: 48,
     height: 48,

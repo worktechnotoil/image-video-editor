@@ -701,7 +701,7 @@ export function PickScreen({
   return (
     <View style={styles.container}>
 
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 8, height: 56 + insets.top }]}>
         <Pressable onPress={() => {
           if (onCancelPress) {
             onCancelPress();
@@ -1006,7 +1006,7 @@ export function PickScreen({
           }}
         />
 
-        <View style={styles.tabBar}>
+        <View style={[styles.tabBar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
           {mediaTabs.filter(t => mediaType === 'any' || (mediaType === 'photo' && t !== 'VIDEO') || (mediaType === 'video' && t !== 'PHOTO')).map((t) => (
             <Pressable key={t} onPress={() => setTab(t)}>
               <Text style={[styles.tab, tab === t && styles.tabActive]}>{t}</Text>
@@ -1052,7 +1052,7 @@ export function PickScreen({
             )}
 
             <View
-              style={[styles.cameraCaptureContainer, { bottom: Math.max(insets.bottom + 90, 90) }]}
+              style={[styles.cameraCaptureContainer, { bottom: Math.max(insets.bottom, 16) + 84 }]}
               pointerEvents="box-none"
             >
               <FilterSelector
@@ -1448,7 +1448,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     zIndex: 10,
-    paddingTop: 16,
+    paddingTop: 14,
   },
   unifiedBottomRow: {
     flexDirection: 'row',

@@ -148,18 +148,11 @@ export function FilterSelector({ onSelect, onCapturePress, onCaptureLongPress, o
   };
 
   const getActiveLabel = () => {
-    if (selected === 'none') {
-      return 'Normal';
-    }
-    const option = FILTER_CATALOG.find((f) => f.id === selected);
-    if (option) {
-      return option.label;
-    }
-    if (isGlassesFilter(selected)) {
+    if (isGlassesFilter(selected) && selected !== 'glasses') {
       const sub = GLASSES_SUBCATEGORIES.find((s) => s.id === selected);
       return sub ? `Glasses - ${sub.label}` : 'Glasses';
     }
-    if (isLipstickFilter(selected)) {
+    if (isLipstickFilter(selected) && selected !== 'lipstick') {
       const sub = LIPSTICK_SUBCATEGORIES.find((s) => s.id === selected);
       return sub ? `Lipstick - ${sub.label}` : 'Lipstick';
     }
@@ -417,8 +410,8 @@ const styles = StyleSheet.create({
   },
   label: {
     color: 'rgba(255,255,255,0.7)',
-    fontSize: 10,
-    marginTop: 14,
+    fontSize: 11,
+    marginTop: 6,
     textAlign: 'center',
   },
   labelActive: {

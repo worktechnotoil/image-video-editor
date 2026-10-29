@@ -9,6 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { exportAsset } from '../native/MediaLibrary';
 import { VideoPreview } from '../native/VideoPreview';
 import type { MediaItem } from '../types';
@@ -24,6 +25,7 @@ export function GalleryScreen({
   onSelect: (item: MediaItem) => void;
   onNext: () => void;
 }) {
+  const insets = useSafeAreaInsets();
   const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(items[0] || null);
   const [previewUri, setPreviewUri] = useState<string | null>(null);
   const [cropMode, setCropMode] = useState<'1:1' | 'original'>('1:1');
@@ -140,7 +142,7 @@ export function GalleryScreen({
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top, height: 56 + insets.top }]}>
         <Pressable onPress={onBack} style={styles.backButton}>
           <Text style={styles.headerCancel}>✕</Text>
         </Pressable>
@@ -233,7 +235,7 @@ export function GalleryScreen({
         numColumns={4}
         style={styles.libraryList}
         renderItem={renderThumb}
-        contentContainerStyle={styles.grid}
+        contentContainerStyle={[styles.grid, { paddingBottom: Math.max(insets.bottom + 12, 20) }]}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={styles.emptyText}>No items picked yet.</Text>
