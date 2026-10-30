@@ -2421,7 +2421,11 @@ export function EditorScreen({
 
   const videoAspect = typeof cropRatio === 'number' ? cropRatio : (dimensions.width / (dimensions.height || 1));
 
-  const carouselHeight = showMusicModal ? Math.min(260, SCREEN_HEIGHT * 0.3) : Math.min(340, Math.max(260, SCREEN_HEIGHT * 0.38));
+  const carouselHeight = showMusicModal
+    ? Math.min(260, SCREEN_HEIGHT * 0.3)
+    : panel === 'trim'
+      ? Math.min(300, Math.max(220, SCREEN_HEIGHT * 0.32))
+      : Math.min(340, Math.max(260, SCREEN_HEIGHT * 0.38));
 
   mutableCallbacks.current.save = saveEditsForIndex;
   mutableCallbacks.current.load = loadEditsForIndex;
@@ -4499,7 +4503,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 4,
   },
   adjustSmallButtonText: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  trimTimelineBox: { alignSelf: 'center', marginTop: 10 },
+  trimTimelineBox: { alignSelf: 'center', marginTop: 4, marginBottom: 8 },
   filmstrip: {
     width: '100%',
     height: 60,

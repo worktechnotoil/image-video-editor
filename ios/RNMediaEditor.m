@@ -600,35 +600,54 @@ RCT_REMAP_METHOD(trimVideo,
       }
       
       if (targetSize.width > 0 && targetSize.height > 0) {
-          UIGraphicsBeginImageContextWithOptions(targetSize, NO, 1.0);
-          for (NSDictionary *overlay in vOverlays) {
-              NSString *text = overlay[@"text"];
-              NSNumber *x = overlay[@"x"];
-              NSNumber *y = overlay[@"y"];
-              NSNumber *fontSize = overlay[@"fontSize"] ?: @24;
-              NSString *colorHex = overlay[@"color"] ?: @"#FFFFFF";
+          // Render text overlay directly into CGContext with Core Graphics / Core Image native coordinate system.
+          // In Core Graphics (and Core Image), (0,0) is at bottom-left.
+          // By flipping the context vertically (Translate 0, targetSize.height then Scale 1, -1),
+          // UIKit's [text drawAtPoint:] with top-left (x, y) renders directly upright into the bitmap,
+          // matching Core Image's coordinate system with zero extra transforms needed!
+          CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+          CGContextRef ctx = CGBitmapContextCreate(NULL,
+                                                   (size_t)targetSize.width,
+                                                   (size_t)targetSize.height,
+                                                   8,
+                                                   (size_t)targetSize.width * 4,
+                                                   colorSpace,
+                                                   kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+          CGColorSpaceRelease(colorSpace);
+
+          if (ctx) {
+              UIGraphicsPushContext(ctx);
               
-              if (text && x && y) {
-                  UIColor *color = [self colorFromHexString:colorHex];
-                  NSDictionary *attrs = @{
-                      NSFontAttributeName: [UIFont boldSystemFontOfSize:fontSize.floatValue],
-                      NSForegroundColorAttributeName: color
-                  };
-                  [text drawAtPoint:CGPointMake(x.doubleValue, y.doubleValue) withAttributes:attrs];
+              // Flip Y so that (0,0) top-left UIKit drawing coordinates map correctly
+              // to the native Core Graphics buffer without inverted/mirrored orientation.
+              CGContextTranslateCTM(ctx, 0, targetSize.height);
+              CGContextScaleCTM(ctx, 1.0, -1.0);
+              
+              for (NSDictionary *overlay in vOverlays) {
+                  NSString *text = overlay[@"text"];
+                  NSNumber *x = overlay[@"x"];
+                  NSNumber *y = overlay[@"y"];
+                  NSNumber *fontSize = overlay[@"fontSize"] ?: @24;
+                  NSString *colorHex = overlay[@"color"] ?: @"#FFFFFF";
+                  
+                  if (text && x && y) {
+                      UIColor *color = [self colorFromHexString:colorHex];
+                      NSDictionary *attrs = @{
+                          NSFontAttributeName: [UIFont boldSystemFontOfSize:fontSize.floatValue],
+                          NSForegroundColorAttributeName: color
+                      };
+                      [text drawAtPoint:CGPointMake(x.doubleValue, y.doubleValue) withAttributes:attrs];
+                  }
               }
-          }
-          UIImage *overlayImg = UIGraphicsGetImageFromCurrentImageContext();
-          UIGraphicsEndImageContext();
-          if (overlayImg) {
-              // Convert UIImage to PNG data and then to CIImage to ensure a clean, standard bitmap
-              // with zero orientation ambiguity that renders upright in Core Image.
-              NSData *pngData = UIImagePNGRepresentation(overlayImg);
-              if (pngData) {
-                  CIImage *rawCI = [CIImage imageWithData:pngData];
-                  // Core Image inverts Y compared to PNG bitmap: flip Y and translate into visible canvas
-                  CGAffineTransform t = CGAffineTransformMakeScale(1.0, -1.0);
-                  t = CGAffineTransformTranslate(t, 0, -targetSize.height);
-                  textOverlayCI = [rawCI imageByApplyingTransform:t];
+              
+              UIGraphicsPopContext();
+              
+              CGImageRef cgImage = CGBitmapContextCreateImage(ctx);
+              CGContextRelease(ctx);
+              
+              if (cgImage) {
+                  textOverlayCI = [CIImage imageWithCGImage:cgImage];
+                  CGImageRelease(cgImage);
               }
           }
       }

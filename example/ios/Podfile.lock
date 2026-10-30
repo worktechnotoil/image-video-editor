@@ -3,7 +3,7 @@ PODS:
   - hermes-engine (250829098.0.7):
     - hermes-engine/Pre-built (= 250829098.0.7)
   - hermes-engine/Pre-built (250829098.0.7)
-  - ImageVideoEditor (0.1.29):
+  - ImageVideoEditor (0.1.30):
     - hermes-engine
     - RCTRequired
     - RCTTypeSafety
@@ -2142,7 +2142,7 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   FBLazyVector: 974207232af1c5372a56239516ccc450a6420bfd
   hermes-engine: ed9b9bf3bff5b4b0a857b8b9c156590c7ae75464
-  ImageVideoEditor: c91c8838c22c2e86aa9adc7db839330fdb390ba0
+  ImageVideoEditor: a59de49cd56d2d4306994439c097ccaa510bbe11
   RCTDeprecation: 8ae59687fd548d481aa5ce8014ac7cd9b47e7316
   RCTRequired: d711b3887891fab6a77c6b9cdc49a3d8b171e36a
   RCTSwiftUI: 96986e49a4fdc2c2103929dee2641e1b57edf33d
